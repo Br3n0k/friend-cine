@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste MKV - Friend Cine</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1000px; 
+            margin: 0 auto; 
+            padding: 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px;
+            background: rgba(139, 92, 246, 0.1);
+            border-radius: 16px;
+            border: 1px solid rgba(139, 92, 246, 0.2);
+        }
+        .codec-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .codec-test { 
+            padding: 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        .codec-test:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.2);
+        }
+        .supported { 
+            color: #4CAF50; 
+            background: rgba(76, 175, 80, 0.1);
+            border-color: rgba(76, 175, 80, 0.3);
+        }
+        .not-supported { 
+            color: #f44336;
+            background: rgba(244, 67, 54, 0.1);
+            border-color: rgba(244, 67, 54, 0.3);
+        }
+        .maybe { 
+            color: #FF9800;
+            background: rgba(255, 152, 0, 0.1);
+            border-color: rgba(255, 152, 0, 0.3);
+        }
+        .priority {
+            border: 2px solid #8B5CF6;
+            background: rgba(139, 92, 246, 0.1);
+        }
+        video { 
+            width: 100%; 
+            max-width: 800px; 
+            margin: 20px auto;
+            border-radius: 12px;
+            display: block;
+        }
+        .info { 
+            background: rgba(59, 130, 246, 0.15);
+            padding: 20px;
+            border-radius: 12px;
+            margin: 30px 0;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .badge.mkv { background: #8B5CF6; }
+        .badge.priority { background: #F59E0B; }
+        .test-video {
+            background: rgba(0,0,0,0.5);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .section {
+            margin: 40px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎬 Teste de Compatibilidade MKV - Friend Cine</h1>
+        <p>Sistema otimizado para arquivos MKV com H.265/HEVC e áudio FLAC</p>
+    </div>
+
+    <div class="info">
+        <h3>ℹ️ Sobre este teste</h3>
+        <p>Esta página verifica a compatibilidade do seu navegador com os formatos utilizados pelo Friend Cine:</p>
+        <ul>
+            <li><strong>Formato Principal:</strong> MKV com H.265/HEVC + FLAC</li>
+            <li><strong>Formatos Web:</strong> MP4 (H.264 + AAC), WebM (VP9 + Opus)</li>
+            <li><strong>Mobile:</strong> MP4 otimizado para dispositivos móveis</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>📹 Codecs de Vídeo MKV (Prioritários)</h2>
+        <div class="codec-grid" id="video-priority"></div>
+    </div>
+
+    <div class="section">
+        <h2>🎵 Codecs de Áudio MKV (Prioritários)</h2>
+        <div class="codec-grid" id="audio-priority"></div>
+    </div>
+
+    <div class="section">
+        <h2>🌐 Formatos Web (Fallback)</h2>
+        <div class="codec-grid" id="web-formats"></div>
+    </div>
+
+    <div class="section">
+        <h2>🎥 Teste com Arquivo de Exemplo</h2>
+        <div class="test-video">
+            <p>Testando reprodução de arquivo MKV...</p>
+            <video id="test-video" controls preload="metadata">
+                <source src="/videos/sample.mkv" type="video/x-matroska">
+                <source src="/videos/sample.mp4" type="video/mp4">
+                Seu navegador não suporta reprodução de vídeo.
+            </video>
+            <div id="video-info"></div>
+        </div>
+    </div>
+
+    <script>
+        // Criar elementos para testes
+        const video = document.createElement('video');
+        const audio = document.createElement('audio');
+        
+        // Formatos MKV prioritários
+        const priorityVideoFormats = [
+            { format: 'video/x-matroska; codecs="hev1.1.6.L93.B0"', name: 'MKV H.265/HEVC Main', priority: true },
+            { format: 'video/x-matroska; codecs="hvc1.1.6.L93.B0"', name: 'MKV H.265/HEVC Main (hvc1)', priority: true },
+            { format: 'video/x-matroska; codecs="avc1.42E01E"', name: 'MKV H.264/AVC', priority: true },
+            { format: 'video/x-matroska', name: 'MKV (genérico)', priority: true }
+        ];
+
+        const priorityAudioFormats = [
+            { format: 'audio/flac', name: 'FLAC (lossless)', priority: true },
+            { format: 'audio/x-flac', name: 'FLAC (alternativo)', priority: true },
+            { format: 'audio/mp4; codecs="flac"', name: 'FLAC em container MP4', priority: true },
+            { format: 'audio/mp4; codecs="mp4a.40.2"', name: 'AAC', priority: true }
+        ];
+
+        // Formatos web fallback
+        const webFormats = [
+            { format: 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"', name: 'MP4 H.264 + AAC' },
+            { format: 'video/webm; codecs="vp9, opus"', name: 'WebM VP9 + Opus' },
+            { format: 'video/webm; codecs="vp8, vorbis"', name: 'WebM VP8 + Vorbis' },
+            { format: 'audio/mpeg', name: 'MP3' },
+            { format: 'audio/ogg; codecs="vorbis"', name: 'Ogg Vorbis' },
+            { format: 'audio/webm; codecs="opus"', name: 'WebM Opus' }
+        ];
+
+        function getSupportLevel(support) {
+            switch(support) {
+                case 'probably': return { class: 'supported', text: '✅ Totalmente suportado', icon: '🟢' };
+                case 'maybe': return { class: 'maybe', text: '⚠️ Parcialmente suportado', icon: '🟡' };
+                default: return { class: 'not-supported', text: '❌ Não suportado', icon: '🔴' };
+            }
+        }
+
+        function renderFormats(formats, containerId, isAudio = false) {
+            const container = document.getElementById(containerId);
+            formats.forEach(format => {
+                const element = isAudio ? audio : video;
+                const support = element.canPlayType(format.format);
+                const level = getSupportLevel(support);
+                
+                const div = document.createElement('div');
+                div.className = `codec-test ${level.class} ${format.priority ? 'priority' : ''}`;
+                div.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <strong>${format.name}</strong>
+                        <span style="font-size: 1.2em;">${level.icon}</span>
+                    </div>
+                    <div style="color: rgba(255,255,255,0.7); font-size: 14px; margin-bottom: 8px;">
+                        ${level.text}
+                    </div>
+                    <div style="font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.5);">
+                        ${format.format}
+                    </div>
+                    ${format.priority ? '<span class="badge mkv">MKV</span>' : ''}
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // Renderizar testes
+        renderFormats(priorityVideoFormats, 'video-priority');
+        renderFormats(priorityAudioFormats, 'audio-priority', true);
+        renderFormats(webFormats, 'web-formats');
+
+        // Monitorar vídeo de teste
+        const testVideo = document.getElementById('test-video');
+        const videoInfoDiv = document.getElementById('video-info');
+
+        testVideo.addEventListener('loadedmetadata', () => {
+            console.log('🎬 Vídeo carregado com sucesso!');
+            const info = `
+                <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid rgba(76, 175, 80, 0.3);">
+                    <h3 style="color: #4CAF50; margin-top: 0;">📊 Informações do Vídeo</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 14px;">
+                        <div><strong>Duração:</strong> ${Math.floor(testVideo.duration / 60)}:${Math.floor(testVideo.duration % 60).toString().padStart(2, '0')}</div>
+                        <div><strong>Resolução:</strong> ${testVideo.videoWidth}x${testVideo.videoHeight}</div>
+                        <div><strong>Proporção:</strong> ${(testVideo.videoWidth / testVideo.videoHeight).toFixed(2)}</div>
+                        <div><strong>Volume:</strong> ${Math.round(testVideo.volume * 100)}%</div>
+                    </div>
+                </div>
+            `;
+            videoInfoDiv.innerHTML = info;
+        });
+
+        testVideo.addEventListener('error', (e) => {
+            console.error('❌ Erro ao carregar vídeo:', e);
+            videoInfoDiv.innerHTML = `
+                <div style="background: rgba(244, 67, 54, 0.1); padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid rgba(244, 67, 54, 0.3);">
+                    <h3 style="color: #f44336; margin-top: 0;">❌ Erro ao Carregar Vídeo</h3>
+                    <p>Não foi possível carregar o arquivo de teste. Isso pode indicar:</p>
+                    <ul style="color: rgba(255,255,255,0.8); font-size: 14px;">
+                        <li>Navegador não suporta o formato MKV</li>
+                        <li>Arquivo de teste não está disponível</li>
+                        <li>Codecs H.265/HEVC não estão disponíveis</li>
+                    </ul>
+                    <p><strong>Erro:</strong> ${testVideo.error ? testVideo.error.message : 'Desconhecido'}</p>
+                </div>
+            `;
+        });
+
+        testVideo.addEventListener('canplay', () => {
+            console.log('✅ Vídeo pronto para reprodução');
+        });
+
+        // Informações do sistema
+        console.log('🌐 Informações do Sistema:');
+        console.log('User Agent:', navigator.userAgent);
+        console.log('Plataforma:', navigator.platform);
+        console.log('Hardware Concurrency:', navigator.hardwareConcurrency);
+        
+        // Detectar suporte a hardware acceleration
+        if ('getVideoPlaybackQuality' in HTMLVideoElement.prototype) {
+            console.log('📈 API de qualidade de playback disponível');
+        }
+    </script>
+</body>
+</html> 

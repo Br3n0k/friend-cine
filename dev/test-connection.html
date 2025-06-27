@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Conectividade - Friend Cine</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px;
+            background: rgba(139, 92, 246, 0.1);
+            border-radius: 16px;
+            border: 1px solid rgba(139, 92, 246, 0.2);
+        }
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .status {
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 12px;
+            border: 1px solid;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        .status:hover {
+            transform: translateY(-2px);
+        }
+        .success { 
+            background: rgba(39, 174, 96, 0.1); 
+            border-color: rgba(39, 174, 96, 0.3);
+            color: #27ae60;
+        }
+        .error { 
+            background: rgba(231, 76, 60, 0.1);
+            border-color: rgba(231, 76, 60, 0.3);
+            color: #e74c3c;
+        }
+        .warning { 
+            background: rgba(243, 156, 18, 0.1);
+            border-color: rgba(243, 156, 18, 0.3);
+            color: #f39c12;
+        }
+        .info { 
+            background: rgba(52, 152, 219, 0.1);
+            border-color: rgba(52, 152, 219, 0.3);
+            color: #3498db;
+        }
+        .log-container {
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        pre {
+            background: rgba(0,0,0,0.5);
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 12px;
+            line-height: 1.4;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .test-section {
+            background: rgba(255,255,255,0.02);
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #8B5CF6;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .api-test {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 15px;
+            align-items: center;
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .badge {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .badge.new { background: #8B5CF6; }
+        .badge.mkv { background: #F59E0B; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧪 Teste de Conectividade - Friend Cine</h1>
+        <p>Verificação completa do sistema MKV e APIs refatoradas</p>
+    </div>
+    
+    <div id="results"></div>
+    
+    <div class="test-section">
+        <h2>📝 Log de Testes em Tempo Real</h2>
+        <div class="log-container">
+            <pre id="log"></pre>
+        </div>
+    </div>
+
+    <!-- Socket.io -->
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    
+    <script>
+        const results = document.getElementById('results');
+        const logElement = document.getElementById('log');
+        
+        function addResult(type, title, message, badge = null) {
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <strong>${title}</strong>
+                    ${badge ? `<span class="badge ${badge.class}">${badge.text}</span>` : ''}
+                </div>
+                <div>${message}</div>
+            `;
+            results.appendChild(div);
+        }
+        
+        function addApiTest(endpoint, status, description, response = null) {
+            const container = document.getElementById('api-tests') || (() => {
+                const section = document.createElement('div');
+                section.className = 'test-section';
+                section.innerHTML = '<h2>🔌 Testes de API</h2><div id="api-tests"></div>';
+                results.appendChild(section);
+                return section.querySelector('#api-tests');
+            })();
+            
+            const div = document.createElement('div');
+            div.className = 'api-test';
+            div.innerHTML = `
+                <div>
+                    <strong>${endpoint}</strong>
+                    <div style="font-size: 14px; color: rgba(255,255,255,0.7); margin-top: 5px;">
+                        ${description}
+                    </div>
+                    ${response ? `<div style="font-size: 12px; font-family: monospace; color: rgba(255,255,255,0.5); margin-top: 5px;">${JSON.stringify(response, null, 2).slice(0, 100)}...</div>` : ''}
+                </div>
+                <div>
+                    <span class="status ${status}" style="padding: 8px 12px; font-size: 14px;">
+                        ${status === 'success' ? '✅' : status === 'error' ? '❌' : '⚠️'}
+                    </span>
+                </div>
+            `;
+            container.appendChild(div);
+        }
+        
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.textContent += `[${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(message);
+        }
+        
+        log('🎬 Iniciando testes completos do Friend Cine MKV...');
+        
+        // Teste 1: Socket.io
+        if (typeof io !== 'undefined') {
+            addResult('success', '✅ Socket.io Carregado', 'Biblioteca Socket.io está disponível e pronta');
+            log('✅ Socket.io está disponível');
+            
+            // Teste 2: Conexão com servidor
+            log('🔌 Tentando conectar com o servidor backend...');
+            const socket = io('http://localhost:4000');
+            
+            let connectionTimeout = setTimeout(() => {
+                addResult('error', '❌ Timeout de Conexão', 'Servidor backend não respondeu em 10 segundos');
+                log('❌ Timeout de conexão com servidor');
+            }, 10000);
+            
+            socket.on('connect', () => {
+                clearTimeout(connectionTimeout);
+                addResult('success', '✅ Backend Conectado', 'Conexão WebSocket estabelecida com sucesso', { class: 'new', text: 'NOVO' });
+                log('✅ Conexão WebSocket estabelecida');
+                
+                // Teste 3: Funcionalidades de sala
+                log('🏠 Testando funcionalidades de sala...');
+                socket.emit('join-room', { 
+                    roomId: 'teste-conexao-mkv', 
+                    username: 'Usuario-Teste-MKV' 
+                });
+            });
+            
+            socket.on('room-state', (roomState) => {
+                addResult('success', '✅ Sistema de Salas', 'Recebendo e processando dados de sala corretamente');
+                log('✅ Dados da sala recebidos: ' + JSON.stringify(roomState, null, 2));
+            });
+            
+            socket.on('video-converted', (data) => {
+                addResult('success', '✅ Conversão MKV', 'Sistema de conversão H.265/FLAC funcionando', { class: 'mkv', text: 'MKV' });
+                log('✅ Notificação de conversão MKV: ' + JSON.stringify(data));
+            });
+            
+            socket.on('upload-progress', (data) => {
+                log('📤 Progresso de upload: ' + JSON.stringify(data));
+            });
+            
+            socket.on('connect_error', (error) => {
+                clearTimeout(connectionTimeout);
+                addResult('error', '❌ Erro de Conexão', error.message);
+                log('❌ Erro de conexão: ' + error.message);
+            });
+            
+            socket.on('disconnect', (reason) => {
+                addResult('warning', '⚠️ Desconectado', `Conexão perdida: ${reason}`);
+                log('⚠️ Desconectado: ' + reason);
+            });
+            
+        } else {
+            addResult('error', '❌ Socket.io Ausente', 'Biblioteca Socket.io não foi carregada');
+            log('❌ Socket.io não está disponível');
+        }
+        
+        // Teste 4: APIs do sistema refatorado
+        log('🌐 Testando APIs refatoradas...');
+        
+        const apiTests = [
+            {
+                endpoint: '/api/health',
+                description: 'Health check do sistema',
+                expected: { status: 'ok' }
+            },
+            {
+                endpoint: '/api/videos',
+                description: 'Lista de vídeos com metadados MKV',
+                expected: { videos: [] }
+            },
+            {
+                endpoint: '/api/videos/stats',
+                description: 'Estatísticas do sistema de vídeos',
+                expected: { total: 0 }
+            },
+            {
+                endpoint: '/api/system/storage',
+                description: 'Status do sistema de storage',
+                expected: { directories: {} }
+            },
+            {
+                endpoint: '/api/conversion/queue',
+                description: 'Fila de conversão de vídeos',
+                expected: { queue: [] }
+            }
+        ];
+        
+        // Executar testes de API em paralelo
+        Promise.allSettled(
+            apiTests.map(async test => {
+                try {
+                    log(`🔍 Testando ${test.endpoint}...`);
+                    const response = await fetch(`http://localhost:4000${test.endpoint}`);
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        addApiTest(test.endpoint, 'success', test.description, data);
+                        log(`✅ ${test.endpoint} - OK`);
+                        return { endpoint: test.endpoint, status: 'success', data };
+                    } else {
+                        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                    }
+                } catch (error) {
+                    addApiTest(test.endpoint, 'error', test.description + ` - ${error.message}`);
+                    log(`❌ ${test.endpoint} - ${error.message}`);
+                    return { endpoint: test.endpoint, status: 'error', error: error.message };
+                }
+            })
+        ).then(results => {
+            const successful = results.filter(r => r.value?.status === 'success').length;
+            const total = results.length;
+            
+            if (successful === total) {
+                addResult('success', '🎉 Todas as APIs', `${successful}/${total} APIs respondendo corretamente`);
+                log(`🎉 Todas as ${total} APIs estão funcionando!`);
+            } else {
+                addResult('warning', '⚠️ APIs Parciais', `${successful}/${total} APIs funcionando`);
+                log(`⚠️ ${successful}/${total} APIs funcionando`);
+            }
+        });
+        
+        // Teste 5: Sistema de arquivos
+        log('📁 Testando sistema de arquivos...');
+        fetch('http://localhost:4000/api/system/directories')
+            .then(response => response.json())
+            .then(data => {
+                const storageCount = Object.keys(data.storage || {}).length;
+                if (storageCount > 0) {
+                    addResult('success', '✅ Sistema de Storage', `${storageCount} diretórios de storage configurados`, { class: 'mkv', text: 'MKV' });
+                    log(`✅ Sistema de storage: ${storageCount} diretórios`);
+                } else {
+                    addResult('warning', '⚠️ Storage Limitado', 'Estrutura de storage não detectada');
+                    log('⚠️ Estrutura de storage não detectada');
+                }
+            })
+            .catch(error => {
+                log('❌ Erro no sistema de arquivos: ' + error.message);
+            });
+        
+        // Teste 6: FFmpeg e conversão
+        log('🎬 Testando capacidades de conversão...');
+        fetch('http://localhost:4000/api/system/ffmpeg')
+            .then(response => response.json())
+            .then(data => {
+                if (data.available) {
+                    addResult('success', '✅ FFmpeg Disponível', `Versão: ${data.version} - Codecs H.265/FLAC: ${data.codecs?.hevc ? '✅' : '❌'}`, { class: 'mkv', text: 'MKV' });
+                    log(`✅ FFmpeg: ${data.version}`);
+                } else {
+                    addResult('warning', '⚠️ FFmpeg Indisponível', 'Conversão automática não funcionará');
+                    log('⚠️ FFmpeg não está disponível');
+                }
+            })
+            .catch(error => {
+                addResult('error', '❌ Erro FFmpeg', 'Não foi possível verificar FFmpeg');
+                log('❌ Erro ao verificar FFmpeg: ' + error.message);
+            });
+        
+        // Resumo final após 5 segundos
+        setTimeout(() => {
+            log('\n🎯 RESUMO DOS TESTES:');
+            log('━'.repeat(50));
+            
+            const successElements = document.querySelectorAll('.status.success').length;
+            const errorElements = document.querySelectorAll('.status.error').length;
+            const warningElements = document.querySelectorAll('.status.warning').length;
+            
+            log(`✅ Sucessos: ${successElements}`);
+            log(`⚠️  Avisos: ${warningElements}`);
+            log(`❌ Erros: ${errorElements}`);
+            
+            if (errorElements === 0) {
+                log('\n🎉 Sistema funcionando perfeitamente!');
+                addResult('success', '🎉 Sistema Operacional', 'Todos os testes passaram - Friend Cine MKV está pronto!');
+            } else if (errorElements <= 2) {
+                log('\n⚠️ Sistema funcionando com limitações');
+                addResult('warning', '⚠️ Sistema Parcial', 'Alguns recursos podem não estar disponíveis');
+            } else {
+                log('\n❌ Sistema com problemas críticos');
+                addResult('error', '❌ Sistema Com Problemas', 'Verificar configuração do servidor');
+            }
+            
+            log('\n📋 COMANDOS ÚTEIS:');
+            log('npm start - Iniciar sistema completo');
+            log('npm run check-system - Executar este teste via terminal');
+            log('npm run install-ffmpeg - Instalar FFmpeg');
+            log('npm run clean:storage - Limpar arquivos temporários');
+        }, 5000);
+    </script>
+</body>
+</html> 

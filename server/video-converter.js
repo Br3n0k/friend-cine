@@ -1,580 +1,809 @@
 import ffmpeg from 'fluent-ffmpeg';
 import path from 'path';
 import fs from 'fs-extra';
+import { VIDEO_CONFIG, UPLOAD_CONFIG } from '../src/utils/constants.js';
+import { logger, logVideoConversion } from '../src/utils/logger.js';
+import FileManager from './utils/file-manager.js';
 
-// Configurar o caminho do ffmpeg (ajustar conforme sua instalação)
-// ffmpeg.setFfmpegPath('ffmpeg'); // Para Windows com ffmpeg no PATH
-
+/**
+ * Sistema de Conversão de Vídeo Focado em MKV
+ * Arquitetura modular para processamento otimizado com qualidade superior
+ */
 export class VideoConverter {
-  constructor(videosDir) {
-    this.videosDir = videosDir;
-    this.convertedDir = path.join(videosDir, 'converted');
-    fs.ensureDirSync(this.convertedDir);
+  constructor() {
+    this.fileManager = new FileManager();
+    this.config = VIDEO_CONFIG;
+    this.processingQueue = new Map(); // Fila de processamento
+    this.maxConcurrentJobs = this.config.PROCESSING.MAX_CONCURRENT_JOBS;
     
-    // Limpar arquivos de lock órfãos na inicialização
-    this.cleanupOrphanedLockFiles();
+    // Inicialização
+    this.init();
   }
 
-  // Limpar arquivos .converting órfãos (quando servidor for reiniciado durante conversão)
-  async cleanupOrphanedLockFiles() {
+  async init() {
     try {
-      const files = await fs.readdir(this.convertedDir);
-      const lockFiles = files.filter(file => file.endsWith('.converting'));
-      
-      for (const lockFile of lockFiles) {
-        const lockPath = path.join(this.convertedDir, lockFile);
-        await fs.remove(lockPath);
-        console.log(`🧹 Arquivo de lock órfão removido: ${lockFile}`);
-      }
-      
-      if (lockFiles.length > 0) {
-        console.log(`✅ ${lockFiles.length} arquivo(s) de lock órfão(s) removido(s)`);
-      }
+      await this.validateFFmpeg();
+      await this.cleanupOrphanedJobs();
+      logger.info('🎬 VideoConverter inicializado com sucesso');
     } catch (error) {
-      console.log('⚠️ Erro ao limpar arquivos de lock:', error.message);
+      logger.error('❌ Erro na inicialização do VideoConverter:', error);
     }
   }
 
-  // Verificar se o arquivo é compatível com navegadores
-  isWebCompatible(filename) {
-    const webCompatibleFormats = ['.mp4', '.webm', '.ogg'];
-    const ext = path.extname(filename).toLowerCase();
-    return webCompatibleFormats.includes(ext);
+  /**
+   * Valida se FFmpeg está disponível e suas capacidades
+   */
+  async validateFFmpeg() {
+    return new Promise((resolve, reject) => {
+      ffmpeg.getAvailableFormats((err, formats) => {
+        if (err) {
+          logger.error('❌ FFmpeg não encontrado:', err.message);
+          this.ffmpegAvailable = false;
+          resolve(false);
+        } else {
+          // Verificar codecs específicos necessários
+          const requiredCodecs = ['libx265', 'libx264', 'libvpx-vp9', 'aac', 'flac', 'libopus'];
+          this.availableCodecs = Object.keys(formats);
+          this.ffmpegAvailable = true;
+          
+          logger.info('✅ FFmpeg detectado com sucesso');
+          logger.info(`📋 Codecs disponíveis: ${this.availableCodecs.length}`);
+          resolve(true);
+        }
+      });
+    });
   }
 
-  // Verificar informações do vídeo
-  async getVideoInfo(inputPath) {
-    return new Promise((resolve, reject) => {
-      // Tentar diferentes formas de encontrar o ffmpeg
-      const ffmpegPaths = [
-        'ffmpeg',
-        'C:\\ffmpeg\\bin\\ffmpeg.exe',
-        'C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe',
-        process.env.FFMPEG_PATH
-      ].filter(Boolean);
+  /**
+   * Limpa jobs órfãos de conversões anteriores
+   */
+  async cleanupOrphanedJobs() {
+    try {
+      const processingDir = this.fileManager.paths.PROCESSING;
+      if (await fs.exists(processingDir)) {
+        const files = await fs.readdir(processingDir);
+        
+        for (const file of files) {
+          if (file.endsWith('.converting') || file.endsWith('.lock')) {
+            const lockPath = path.join(processingDir, file);
+            await fs.remove(lockPath);
+            logger.info(`🧹 Job órfão removido: ${file}`);
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('⚠️ Erro ao limpar jobs órfãos:', error);
+    }
+  }
 
-      console.log('🔍 Tentando encontrar FFmpeg...');
+  /**
+   * Extrai metadados completos do vídeo
+   */
+  async extractMetadata(inputPath) {
+    return new Promise((resolve, reject) => {
+      logger.info(`🔍 Extraindo metadados: ${path.basename(inputPath)}`);
       
       ffmpeg.ffprobe(inputPath, (err, metadata) => {
         if (err) {
-          console.log('⚠️ FFmpeg não encontrado no PATH atual');
-          console.log('💡 Dica: Reinicie o terminal ou IDE para carregar o novo PATH');
-          console.log('🔄 Usando modo compatibilidade sem conversão');
-          resolve({
-            duration: 0,
-            videoStreams: [],
-            audioStreams: [],
-            ffmpegAvailable: false,
-            error: err.message
-          });
-        } else {
-          const videoStreams = metadata.streams.filter(stream => stream.codec_type === 'video');
-          const audioStreams = metadata.streams.filter(stream => stream.codec_type === 'audio');
-          
-          // Log detalhado das trilhas de áudio
-          console.log('🎵 Trilhas de áudio encontradas:');
-          audioStreams.forEach((stream, index) => {
-            console.log(`   Trilha ${index}: ${stream.codec_name} - ${stream.tags?.language || 'indefinido'} - ${stream.tags?.title || 'sem título'}`);
-          });
-          
-          resolve({
-            duration: metadata.format.duration,
-            videoStreams,
-            audioStreams,
+          logger.error('❌ Erro ao extrair metadados:', err.message);
+          reject(err);
+          return;
+        }
+
+        try {
+          const videoStreams = metadata.streams.filter(s => s.codec_type === 'video');
+          const audioStreams = metadata.streams.filter(s => s.codec_type === 'audio');
+          const subtitleStreams = metadata.streams.filter(s => s.codec_type === 'subtitle');
+
+          // Análise detalhada das trilhas de áudio
+          const audioAnalysis = audioStreams.map((stream, index) => ({
+            index,
+            codec: stream.codec_name,
+            language: stream.tags?.language || 'und',
+            title: stream.tags?.title || `Audio Track ${index + 1}`,
+            channels: stream.channels || 2,
+            bitrate: stream.bit_rate ? parseInt(stream.bit_rate) : null,
+            sampleRate: stream.sample_rate ? parseInt(stream.sample_rate) : null,
+            duration: parseFloat(stream.duration) || 0
+          }));
+
+          // Análise das legendas
+          const subtitleAnalysis = subtitleStreams.map((stream, index) => ({
+            index,
+            codec: stream.codec_name,
+            language: stream.tags?.language || 'und',
+            title: stream.tags?.title || `Subtitle ${index + 1}`,
+            forced: stream.disposition?.forced === 1,
+            default: stream.disposition?.default === 1
+          }));
+
+          // Análise do vídeo
+          const videoAnalysis = videoStreams.length > 0 ? {
+            codec: videoStreams[0].codec_name,
+            width: videoStreams[0].width,
+            height: videoStreams[0].height,
+            frameRate: eval(videoStreams[0].r_frame_rate),
+            bitrate: videoStreams[0].bit_rate ? parseInt(videoStreams[0].bit_rate) : null,
+            duration: parseFloat(videoStreams[0].duration) || parseFloat(metadata.format.duration),
+            pixelFormat: videoStreams[0].pix_fmt
+          } : null;
+
+          const completeMetadata = {
             format: metadata.format,
+            video: videoAnalysis,
+            audio: audioAnalysis,
+            subtitles: subtitleAnalysis,
+            chapters: metadata.chapters || [],
+            globalMetadata: metadata.format.tags || {},
             ffmpegAvailable: true,
-            allStreams: metadata.streams
-          });
-        }
-      });
-    });
-  }
-
-  // Converter vídeo preservando TODAS as trilhas de áudio
-  async convertToWebFormat(inputPath, outputFilename, videoInfo = null) {
-    const outputPath = path.join(this.convertedDir, outputFilename);
-    const lockFile = outputPath + '.converting'; // Arquivo de controle
-    
-    return new Promise((resolve, reject) => {
-      console.log(`🔄 Iniciando conversão: ${path.basename(inputPath)} -> ${outputFilename}`);
-      
-      // Criar arquivo de lock para indicar que conversão está em andamento
-      fs.writeFileSync(lockFile, JSON.stringify({
-        startTime: Date.now(),
-        inputFile: path.basename(inputPath),
-        outputFile: outputFilename,
-        status: 'converting'
-      }));
-      
-      const command = ffmpeg(inputPath)
-        .videoCodec('libx264')
-        .videoBitrate('2000k') // Qualidade mais alta
-        .size('1920x1080') // Resolução Full HD
-        .outputOptions([
-          '-preset medium', // Melhor qualidade vs velocidade
-          '-crf 20', // Qualidade constante alta (18-24 é considerado visualmente sem perdas)
-          '-movflags +faststart', // Otimizar para streaming
-          '-profile:v high',
-          '-level 4.1',
-          '-map 0:v:0', // Mapear primeiro stream de vídeo
-        ]);
-
-      // Mapear legendas internas se existirem
-      if (videoInfo && videoInfo.allStreams) {
-        const subtitleStreams = videoInfo.allStreams.filter(stream => stream.codec_type === 'subtitle');
-        if (subtitleStreams.length > 0) {
-          console.log(`📝 Encontradas ${subtitleStreams.length} trilha(s) de legenda`);
-          subtitleStreams.forEach((stream, index) => {
-            // Mapear apenas legendas de texto (SRT, ASS, etc), não imagens (PGS, VobSub)
-            if (['srt', 'ass', 'ssa', 'subrip', 'webvtt'].includes(stream.codec_name)) {
-              command.outputOptions([
-                `-map 0:s:${index}`,
-                `-c:s:${index} mov_text` // Codec de legenda para MP4
-              ]);
-              
-              if (stream.tags?.language) {
-                command.outputOptions(`-metadata:s:s:${index} language=${stream.tags.language}`);
-              }
-            }
-          });
-        }
-      }
-
-      // Se temos informações do vídeo, mapear TODAS as trilhas de áudio
-      if (videoInfo && videoInfo.audioStreams && videoInfo.audioStreams.length > 0) {
-        console.log(`🎵 Preservando ${videoInfo.audioStreams.length} trilha(s) de áudio`);
-        
-        videoInfo.audioStreams.forEach((stream, index) => {
-          command.outputOptions([
-            `-map 0:a:${index}`, // Mapear cada trilha de áudio
-            `-c:a:${index} aac`, // Codec AAC para cada trilha
-            `-b:a:${index} 256k`, // Bitrate de áudio ainda mais alto
-            `-ac:${index} 2` // Forçar stereo para compatibilidade
-          ]);
-          
-          // Preservar metadados da trilha (idioma, título)
-          if (stream.tags?.language) {
-            command.outputOptions(`-metadata:s:a:${index} language=${stream.tags.language}`);
-          }
-          if (stream.tags?.title) {
-            command.outputOptions(`-metadata:s:a:${index} title="${stream.tags.title}"`);
-          }
-        });
-      } else {
-        // Fallback: mapear todas as trilhas de áudio automaticamente
-        command
-          .audioCodec('aac')
-          .audioBitrate('256k')
-          .outputOptions([
-            '-map 0:a', // Mapear todas as trilhas de áudio
-          ]);
-      }
-
-      command
-        .output(outputPath)
-        .on('progress', (progress) => {
-          console.log(`📊 Progresso: ${Math.round(progress.percent || 0)}%`);
-        })
-        .on('end', () => {
-          console.log(`✅ Conversão concluída: ${outputFilename}`);
-          // Remover arquivo de lock quando conversão estiver completa
-          try {
-            fs.unlinkSync(lockFile);
-          } catch (e) {
-            console.log('⚠️ Erro ao remover arquivo de lock:', e.message);
-          }
-          resolve(outputPath);
-        })
-        .on('error', (err) => {
-          console.error(`❌ Erro na conversão: ${err.message}`);
-          // Remover arquivo de lock em caso de erro
-          try {
-            fs.unlinkSync(lockFile);
-          } catch (e) {
-            console.log('⚠️ Erro ao remover arquivo de lock:', e.message);
-          }
-          reject(err);
-        })
-        .run();
-    });
-  }
-
-  // Gerar múltiplas versões (MP4, WebM) com todas as trilhas
-  async generateMultipleFormats(inputPath, baseName, videoInfo) {
-    const results = [];
-    
-    try {
-      // Gerar MP4 principal com todas as trilhas
-      const mp4Path = await this.convertToWebFormat(
-        inputPath, 
-        `${baseName}.mp4`,
-        videoInfo
-      );
-      results.push({
-        format: 'mp4',
-        path: mp4Path,
-        url: `/videos/converted/${path.basename(mp4Path)}`,
-        mimeType: 'video/mp4',
-        audioTracks: videoInfo?.audioStreams?.length || 1,
-        isMultiTrack: true
-      });
-
-      // Se há múltiplas trilhas de áudio, criar versões específicas para fallback
-      if (videoInfo?.audioStreams?.length > 1) {
-        console.log('🎵 Criando versões específicas para cada idioma...');
-        
-        for (let i = 0; i < videoInfo.audioStreams.length; i++) {
-          const stream = videoInfo.audioStreams[i];
-          // Mapear idiomas comuns para códigos padronizados
-          let lang = stream.tags?.language || `track${i}`;
-          
-          // Padronizar códigos de idioma
-          const languageMap = {
-            'eng': 'eng',
-            'en': 'eng', 
-            'english': 'eng',
-            'por': 'por',
-            'pt': 'por',
-            'pt-br': 'por',
-            'portuguese': 'por',
-            'spa': 'spa',
-            'es': 'spa',
-            'spanish': 'spa',
-            'fre': 'fre',
-            'fr': 'fre',
-            'french': 'fre'
+            extractedAt: new Date().toISOString()
           };
-          
-          lang = languageMap[lang.toLowerCase()] || lang;
-          
-          console.log(`🌐 Criando versão ${lang.toUpperCase()} (trilha ${i})`);
-          
-          const langPath = await this.convertSingleAudioTrack(
-            inputPath,
-            `${baseName}-${lang}.mp4`,
-            i,
-            videoInfo
-          );
-          
-          results.push({
-            format: 'mp4',
-            path: langPath,
-            url: `/videos/converted/${path.basename(langPath)}`,
-            mimeType: 'video/mp4',
-            audioTracks: 1,
-            language: lang,
-            isLanguageSpecific: true
-          });
+
+          logger.info(`📊 Metadados extraídos: ${audioAnalysis.length} áudio(s), ${subtitleAnalysis.length} legenda(s)`);
+          resolve(completeMetadata);
+        } catch (parseError) {
+          logger.error('❌ Erro ao analisar metadados:', parseError);
+          reject(parseError);
         }
-      }
-
-      // Gerar WebM apenas se MP4 funcionar
-      try {
-        const webmPath = await this.convertToWebM(inputPath, baseName, videoInfo);
-        results.push({
-          format: 'webm',
-          path: webmPath,
-          url: `/videos/converted/${path.basename(webmPath)}`,
-          mimeType: 'video/webm',
-          audioTracks: videoInfo?.audioStreams?.length || 1
-        });
-      } catch (webmError) {
-        console.log('⚠️ Conversão WebM falhou, continuando apenas com MP4');
-        console.log(`   Erro WebM: ${webmError.message}`);
-      }
-
-    } catch (error) {
-      console.error('❌ Erro na conversão:', error);
-      throw error;
-    }
-
-    return results;
-  }
-
-  // Converter apenas uma trilha de áudio específica
-  async convertSingleAudioTrack(inputPath, outputFilename, audioTrackIndex, videoInfo) {
-    const outputPath = path.join(this.convertedDir, outputFilename);
-    const lockFile = outputPath + '.converting';
-    
-    return new Promise((resolve, reject) => {
-      console.log(`🎵 Convertendo trilha de áudio ${audioTrackIndex}: ${outputFilename}`);
-      
-      fs.writeFileSync(lockFile, JSON.stringify({
-        startTime: Date.now(),
-        inputFile: path.basename(inputPath),
-        outputFile: outputFilename,
-        audioTrack: audioTrackIndex,
-        status: 'converting'
-      }));
-      
-      const command = ffmpeg(inputPath)
-        .videoCodec('libx264')
-        .videoBitrate('2000k')
-        .size('1920x1080')
-        .outputOptions([
-          '-preset medium',
-          '-crf 20',
-          '-movflags +faststart',
-          '-profile:v high',
-          '-level 4.1',
-          '-map 0:v:0', // Mapear vídeo
-          `-map 0:a:${audioTrackIndex}`, // Mapear apenas a trilha de áudio específica
-          '-c:a aac',
-          '-b:a 256k',
-          '-ac 2'
-        ]);
-
-      // Preservar metadados da trilha
-      if (videoInfo?.audioStreams?.[audioTrackIndex]?.tags?.language) {
-        command.outputOptions(`-metadata:s:a:0 language=${videoInfo.audioStreams[audioTrackIndex].tags.language}`);
-      }
-
-      command
-        .output(outputPath)
-        .on('progress', (progress) => {
-          if (Math.round(progress.percent || 0) % 10 === 0) {
-            console.log(`📊 Progresso trilha ${audioTrackIndex}: ${Math.round(progress.percent || 0)}%`);
-          }
-        })
-        .on('end', () => {
-          console.log(`✅ Trilha ${audioTrackIndex} convertida: ${outputFilename}`);
-          try {
-            fs.unlinkSync(lockFile);
-          } catch (e) {
-            console.log('⚠️ Erro ao remover lock:', e.message);
-          }
-          resolve(outputPath);
-        })
-        .on('error', (err) => {
-          console.error(`❌ Erro na conversão da trilha ${audioTrackIndex}: ${err.message}`);
-          try {
-            fs.unlinkSync(lockFile);
-          } catch (e) {
-            console.log('⚠️ Erro ao remover lock:', e.message);
-          }
-          reject(err);
-        })
-        .run();
+      });
     });
   }
 
-  async convertToWebM(inputPath, baseName, videoInfo = null) {
-    const outputPath = path.join(this.convertedDir, `${baseName}.webm`);
-    const lockFile = outputPath + '.converting';
+  /**
+   * Determina a melhor qualidade baseada na resolução original
+   */
+  determineBestQuality(metadata) {
+    if (!metadata.video) return '1080p';
     
+    const { width, height } = metadata.video;
+    
+    if (width >= 3840 && height >= 2160) return '4k';
+    if (width >= 1920 && height >= 1080) return '1080p';
+    if (width >= 1280 && height >= 720) return '720p';
+    return '480p';
+  }
+
+  /**
+   * Converte para MKV Master (formato principal)
+   */
+  async convertToMKVMaster(inputPath, fileInfo, metadata) {
+    const quality = this.determineBestQuality(metadata);
+    const outputFileName = `${fileInfo.fileId}_master.mkv`;
+    const tempOutputPath = path.join(this.fileManager.paths.TEMP, outputFileName);
+    const lockFile = tempOutputPath + '.converting';
+
     return new Promise((resolve, reject) => {
-      console.log(`🔄 Iniciando conversão WebM: ${baseName}.webm`);
+      logger.info(`🎯 Convertendo para MKV Master [${quality}]: ${fileInfo.originalName}`);
       
-      // Criar arquivo de lock
+      // Criar lock file
       fs.writeFileSync(lockFile, JSON.stringify({
         startTime: Date.now(),
-        inputFile: path.basename(inputPath),
-        outputFile: `${baseName}.webm`,
-        status: 'converting'
+        inputFile: fileInfo.originalName,
+        outputFile: outputFileName,
+        quality,
+        type: 'mkv_master'
       }));
-      
-      const command = ffmpeg(inputPath)
-        .videoCodec('libvpx-vp9')
-        .videoBitrate('1200k')
-        .size('1280x720')
-        .outputOptions([
-          '-preset good',
-          '-speed 2',
-          '-row-mt 1',
-          '-map 0:v:0', // Mapear primeiro stream de vídeo
-        ]);
 
-      // Mapear trilhas de áudio para WebM
-      if (videoInfo && videoInfo.audioStreams && videoInfo.audioStreams.length > 0) {
-        videoInfo.audioStreams.forEach((stream, index) => {
+      const qualityProfile = this.config.QUALITY_PROFILES[quality.toUpperCase()];
+      const mkvConfig = this.config.MKV_MASTER;
+
+      const command = ffmpeg(inputPath)
+        .videoCodec(mkvConfig.VIDEO_CODEC)
+        .outputOptions([
+          `-crf ${mkvConfig.CRF}`,
+          `-preset ${mkvConfig.PRESET}`,
+          `-tag:v hev1`, // Para compatibilidade H.265
+          `-movflags +faststart`,
+          `-map 0:v:0` // Mapear primeiro stream de vídeo
+        ])
+        .size(`${qualityProfile.width}x${qualityProfile.height}`);
+
+      // Mapear TODAS as trilhas de áudio preservando qualidade máxima
+      if (metadata.audio && metadata.audio.length > 0) {
+        logger.info(`🎵 Preservando ${metadata.audio.length} trilha(s) de áudio em alta qualidade`);
+        
+        metadata.audio.forEach((audioTrack, index) => {
+          const useFlac = audioTrack.channels >= 2 && !audioTrack.codec?.includes('aac');
+          const codec = useFlac ? mkvConfig.AUDIO_CODEC : 'aac';
+          const bitrate = useFlac ? mkvConfig.AUDIO_BITRATE : '320k';
+
           command.outputOptions([
             `-map 0:a:${index}`,
-            `-c:a:${index} libopus`,
-            `-b:a:${index} 128k`
+            `-c:a:${index} ${codec}`,
+            `-b:a:${index} ${bitrate}`,
+            `-metadata:s:a:${index} language=${audioTrack.language}`,
+            `-metadata:s:a:${index} title="${audioTrack.title}"`
           ]);
-          
-          if (stream.tags?.language) {
-            command.outputOptions(`-metadata:s:a:${index} language=${stream.tags.language}`);
-          }
         });
-      } else {
-        command
-          .audioCodec('libopus')
-          .audioBitrate('128k')
-          .outputOptions(['-map 0:a']);
       }
 
+      // Mapear legendas internas
+      if (metadata.subtitles && metadata.subtitles.length > 0) {
+        logger.info(`📝 Preservando ${metadata.subtitles.length} legenda(s)`);
+        
+        metadata.subtitles.forEach((subtitle, index) => {
+          // Converter legendas para formato compatível com MKV
+          const outputCodec = ['srt', 'ass', 'ssa'].includes(subtitle.codec) ? subtitle.codec : 'srt';
+          
+          command.outputOptions([
+            `-map 0:s:${index}`,
+            `-c:s:${index} ${outputCodec}`,
+            `-metadata:s:s:${index} language=${subtitle.language}`,
+            `-metadata:s:s:${index} title="${subtitle.title}"`
+          ]);
+
+          if (subtitle.forced) {
+            command.outputOptions(`-disposition:s:${index} forced`);
+          }
+          if (subtitle.default) {
+            command.outputOptions(`-disposition:s:${index} default`);
+          }
+        });
+      }
+
+      // Preservar capítulos
+      if (metadata.chapters && metadata.chapters.length > 0) {
+        logger.info(`📖 Preservando ${metadata.chapters.length} capítulo(s)`);
+        command.outputOptions('-map_chapters 0');
+      }
+
+      // Metadados globais
+      command.outputOptions([
+        `-metadata title="${metadata.globalMetadata.title || fileInfo.originalName}"`,
+        `-metadata encoder="Friend-Cine MKV Master v2.0"`,
+        `-metadata creation_time="${new Date().toISOString()}"`
+      ]);
+
       command
-        .output(outputPath)
+        .output(tempOutputPath)
+        .on('start', (commandLine) => {
+          logger.info(`🚀 Comando FFmpeg: ${commandLine}`);
+        })
         .on('progress', (progress) => {
-          console.log(`📊 Progresso WebM: ${Math.round(progress.percent || 0)}%`);
-        })
-        .on('end', () => {
-          console.log(`✅ Conversão WebM concluída: ${baseName}.webm`);
-          // Remover arquivo de lock
-          try {
-            fs.unlinkSync(lockFile);
-          } catch (e) {
-            console.log('⚠️ Erro ao remover arquivo de lock WebM:', e.message);
+          const percent = Math.round(progress.percent || 0);
+          if (percent % 5 === 0) { // Log a cada 5%
+            logger.info(`📊 Progresso MKV Master: ${percent}%`);
           }
-          resolve(outputPath);
         })
-        .on('error', (err) => {
-          console.error(`❌ Erro na conversão WebM: ${err.message}`);
-          // Remover arquivo de lock em caso de erro
+        .on('end', async () => {
           try {
-            fs.unlinkSync(lockFile);
-          } catch (e) {
-            console.log('⚠️ Erro ao remover arquivo de lock WebM:', e.message);
+            logger.info(`✅ Conversão MKV Master concluída: ${outputFileName}`);
+            
+            // Mover para diretório master
+            const masterInfo = await this.fileManager.saveMaster({
+              ...fileInfo,
+              path: tempOutputPath
+            }, quality);
+
+            // Salvar metadados
+            await this.fileManager.saveMetadata(masterInfo, metadata);
+
+            // Limpar arquivos temporários
+            await this.cleanup(lockFile, tempOutputPath);
+            
+            logVideoConversion(fileInfo.originalName, outputFileName, true, metadata.video?.duration);
+            resolve(masterInfo);
+          } catch (error) {
+            logger.error(`❌ Erro ao finalizar conversão MKV: ${error.message}`);
+            await this.cleanup(lockFile, tempOutputPath);
+            reject(error);
           }
+        })
+        .on('error', async (err) => {
+          logger.error(`❌ Erro na conversão MKV Master: ${err.message}`);
+          await this.cleanup(lockFile, tempOutputPath);
+          logVideoConversion(fileInfo.originalName, outputFileName, false, null, err);
           reject(err);
         })
         .run();
     });
   }
 
-  // Processar arquivo enviado
-  async processUploadedFile(filePath, originalName) {
+  /**
+   * Gera versões otimizadas para web a partir do MKV Master
+   */
+  async generateWebVersions(masterInfo, metadata) {
+    const webVersions = [];
+    
     try {
-      console.log(`🎬 Processando arquivo: ${originalName}`);
+      // MP4 para compatibilidade universal
+      logger.info('🌐 Gerando versão MP4 para web...');
+      const mp4Version = await this.convertToWebMP4(masterInfo, metadata);
+      webVersions.push(mp4Version);
+
+      // WebM para navegadores modernos (opcional)
+      try {
+        logger.info('🌐 Gerando versão WebM...');
+        const webmVersion = await this.convertToWebM(masterInfo, metadata);
+        webVersions.push(webmVersion);
+      } catch (webmError) {
+        logger.warn('⚠️ Conversão WebM falhou, continuando apenas com MP4:', webmError.message);
+      }
+
+      // Versões móveis em qualidades menores se o original for muito grande
+      if (metadata.video && metadata.video.height > 720) {
+        logger.info('📱 Gerando versão móvel 720p...');
+        const mobileVersion = await this.convertToMobile(masterInfo, metadata, '720p');
+        webVersions.push(mobileVersion);
+      }
+
+      logger.info(`✅ ${webVersions.length} versão(ões) web gerada(s) com sucesso`);
+      return webVersions;
+    } catch (error) {
+      logger.error('❌ Erro ao gerar versões web:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Converte MKV Master para MP4 web-compatível
+   */
+  async convertToWebMP4(masterInfo, metadata, quality = null) {
+    const targetQuality = quality || this.determineBestQuality(metadata);
+    const outputFileName = `${masterInfo.fileId}_${targetQuality}.mp4`;
+    const tempOutputPath = path.join(this.fileManager.paths.TEMP, outputFileName);
+    const lockFile = tempOutputPath + '.converting';
+
+    return new Promise((resolve, reject) => {
+      logger.info(`🎯 Convertendo para MP4 Web [${targetQuality}]: ${masterInfo.originalName}`);
       
-      // Obter informações do vídeo
-      const videoInfo = await this.getVideoInfo(filePath);
-      console.log(`📊 Informações do vídeo:`, {
-        duration: videoInfo.duration,
-        audioTracks: videoInfo.audioStreams?.length || 0,
-        videoTracks: videoInfo.videoStreams?.length || 0,
-        ffmpegAvailable: videoInfo.ffmpegAvailable
-      });
+      fs.writeFileSync(lockFile, JSON.stringify({
+        startTime: Date.now(),
+        inputFile: path.basename(masterInfo.path),
+        outputFile: outputFileName,
+        quality: targetQuality,
+        type: 'web_mp4'
+      }));
 
-      // Se ffmpeg não está disponível, retornar arquivo original
-      if (!videoInfo.ffmpegAvailable) {
-        console.log('⚠️ ffmpeg não disponível, usando arquivo original');
-        return [{
-          format: path.extname(originalName).substring(1),
-          path: filePath,
-          url: `/videos/${path.basename(filePath)}`,
-          mimeType: this.getMimeType(originalName),
-          isOriginal: true,
-          needsConversion: true
-        }];
+      const qualityProfile = this.config.QUALITY_PROFILES[targetQuality.toUpperCase()];
+      const mp4Config = this.config.WEB_STREAMING.MP4;
+
+      const command = ffmpeg(masterInfo.path)
+        .videoCodec(mp4Config.VIDEO_CODEC)
+        .outputOptions([
+          `-crf ${mp4Config.CRF}`,
+          `-preset ${mp4Config.PRESET}`,
+          `-profile:v ${mp4Config.PROFILE}`,
+          `-level ${mp4Config.LEVEL}`,
+          `-movflags +faststart`,
+          `-map 0:v:0`
+        ])
+        .videoBitrate(qualityProfile.bitrate)
+        .size(`${qualityProfile.width}x${qualityProfile.height}`);
+
+      // Otimizar áudio para web (AAC)
+      if (metadata.audio && metadata.audio.length > 0) {
+        // Para web, usar apenas a primeira trilha ou a em português/inglês
+        const primaryAudio = this.selectPrimaryAudioTrack(metadata.audio);
+        
+        command.outputOptions([
+          `-map 0:a:${primaryAudio.index}`,
+          `-c:a ${mp4Config.AUDIO_CODEC}`,
+          `-b:a ${mp4Config.AUDIO_BITRATE}`,
+          `-ac 2`, // Forçar stereo para compatibilidade
+          `-metadata:s:a:0 language=${primaryAudio.language}`,
+          `-metadata:s:a:0 title="${primaryAudio.title}"`
+        ]);
       }
 
-      // Para arquivos MKV ou outros formatos não compatíveis, sempre converter
-      const ext = path.extname(originalName).toLowerCase();
-      if (ext === '.mkv' || ext === '.avi' || ext === '.mov' || ext === '.wmv') {
-        console.log(`🔄 Convertendo ${ext.toUpperCase()} para formatos web compatíveis...`);
-        const baseName = path.parse(originalName).name;
-        const convertedFiles = await this.generateMultipleFormats(filePath, baseName, videoInfo);
-        
-        // Remover arquivo original após conversão bem-sucedida
-        if (convertedFiles && convertedFiles.length > 0) {
-          try {
-            await fs.remove(filePath);
-            console.log(`🗑️ Arquivo original removido: ${path.basename(filePath)}`);
-          } catch (error) {
-            console.log(`⚠️ Não foi possível remover o arquivo original: ${error.message}`);
+      // Metadados otimizados para web
+      command.outputOptions([
+        `-metadata title="${metadata.globalMetadata.title || masterInfo.originalName}"`,
+        `-metadata encoder="Friend-Cine Web Optimized"`
+      ]);
+
+      command
+        .output(tempOutputPath)
+        .on('progress', (progress) => {
+          const percent = Math.round(progress.percent || 0);
+          if (percent % 10 === 0) {
+            logger.info(`📊 Progresso MP4 Web: ${percent}%`);
           }
-        }
-        
-        return convertedFiles;
-      }
-
-      // Se o arquivo já é MP4, verificar se tem múltiplas trilhas de áudio
-      if (ext === '.mp4' && videoInfo.audioStreams && videoInfo.audioStreams.length > 1) {
-        console.log(`🎵 MP4 detectado com ${videoInfo.audioStreams.length} trilhas de áudio - reconvertendo para garantir compatibilidade`);
-        const baseName = path.parse(originalName).name;
-        const convertedFiles = await this.generateMultipleFormats(filePath, baseName, videoInfo);
-        
-        // Remover arquivo original após conversão
-        if (convertedFiles && convertedFiles.length > 0) {
+        })
+        .on('end', async () => {
           try {
-            await fs.remove(filePath);
-            console.log(`🗑️ Arquivo original removido: ${path.basename(filePath)}`);
+            logger.info(`✅ Conversão MP4 Web concluída: ${outputFileName}`);
+            
+            const webInfo = await this.fileManager.saveWebOptimized({
+              ...masterInfo,
+              path: tempOutputPath
+            }, 'mp4', targetQuality);
+
+            await this.cleanup(lockFile, tempOutputPath);
+            logVideoConversion(masterInfo.originalName, outputFileName, true, metadata.video?.duration);
+            resolve(webInfo);
           } catch (error) {
-            console.log(`⚠️ Não foi possível remover o arquivo original: ${error.message}`);
+            await this.cleanup(lockFile, tempOutputPath);
+            reject(error);
           }
-        }
-        
-        return convertedFiles;
-      }
+        })
+        .on('error', async (err) => {
+          logger.error(`❌ Erro na conversão MP4 Web: ${err.message}`);
+          await this.cleanup(lockFile, tempOutputPath);
+          reject(err);
+        })
+        .run();
+    });
+  }
 
-      // Se o arquivo já é compatível e tem apenas uma trilha de áudio
-      if (this.isWebCompatible(originalName)) {
-        console.log('✅ Arquivo já é compatível com navegadores');
-        return [{
-          format: ext.substring(1),
-          path: filePath,
-          url: `/videos/${path.basename(filePath)}`,
-          mimeType: this.getMimeType(originalName),
-          isOriginal: true,
-          audioTracks: videoInfo.audioStreams?.length || 1
-        }];
-      }
+  /**
+   * Converte MKV Master para WebM
+   */
+  async convertToWebM(masterInfo, metadata) {
+    const quality = this.determineBestQuality(metadata);
+    const outputFileName = `${masterInfo.fileId}_${quality}.webm`;
+    const tempOutputPath = path.join(this.fileManager.paths.TEMP, outputFileName);
+    const lockFile = tempOutputPath + '.converting';
 
-      // Converter para formatos compatíveis
-      const baseName = path.parse(originalName).name;
-      const convertedFiles = await this.generateMultipleFormats(filePath, baseName, videoInfo);
+    return new Promise((resolve, reject) => {
+      logger.info(`🎯 Convertendo para WebM [${quality}]: ${masterInfo.originalName}`);
       
-      // Remover arquivo original após conversão
-      if (convertedFiles && convertedFiles.length > 0) {
+      fs.writeFileSync(lockFile, JSON.stringify({
+        startTime: Date.now(),
+        inputFile: path.basename(masterInfo.path),
+        outputFile: outputFileName,
+        quality,
+        type: 'web_webm'
+      }));
+
+      const qualityProfile = this.config.QUALITY_PROFILES[quality.toUpperCase()];
+      const webmConfig = this.config.WEB_STREAMING.WEBM;
+
+      const command = ffmpeg(masterInfo.path)
+        .videoCodec(webmConfig.VIDEO_CODEC)
+        .outputOptions([
+          `-crf ${webmConfig.CRF}`,
+          `-speed 1`,
+          `-row-mt 1`,
+          `-map 0:v:0`
+        ])
+        .videoBitrate(qualityProfile.bitrate)
+        .size(`${qualityProfile.width}x${qualityProfile.height}`);
+
+      // Áudio otimizado para WebM
+      if (metadata.audio && metadata.audio.length > 0) {
+        const primaryAudio = this.selectPrimaryAudioTrack(metadata.audio);
+        
+        command.outputOptions([
+          `-map 0:a:${primaryAudio.index}`,
+          `-c:a ${webmConfig.AUDIO_CODEC}`,
+          `-b:a ${webmConfig.AUDIO_BITRATE}`
+        ]);
+      }
+
+      command
+        .output(tempOutputPath)
+        .on('progress', (progress) => {
+          const percent = Math.round(progress.percent || 0);
+          if (percent % 10 === 0) {
+            logger.info(`📊 Progresso WebM: ${percent}%`);
+          }
+        })
+        .on('end', async () => {
+          try {
+            logger.info(`✅ Conversão WebM concluída: ${outputFileName}`);
+            
+            const webmInfo = await this.fileManager.saveWebOptimized({
+              ...masterInfo,
+              path: tempOutputPath
+            }, 'webm', quality);
+
+            await this.cleanup(lockFile, tempOutputPath);
+            resolve(webmInfo);
+          } catch (error) {
+            await this.cleanup(lockFile, tempOutputPath);
+            reject(error);
+          }
+        })
+        .on('error', async (err) => {
+          logger.error(`❌ Erro na conversão WebM: ${err.message}`);
+          await this.cleanup(lockFile, tempOutputPath);
+          reject(err);
+        })
+        .run();
+    });
+  }
+
+  /**
+   * Versão móvel otimizada
+   */
+  async convertToMobile(masterInfo, metadata, targetQuality = '720p') {
+    const outputFileName = `${masterInfo.fileId}_mobile_${targetQuality}.mp4`;
+    const tempOutputPath = path.join(this.fileManager.paths.TEMP, outputFileName);
+    const lockFile = tempOutputPath + '.converting';
+
+    return new Promise((resolve, reject) => {
+      logger.info(`📱 Convertendo para Mobile [${targetQuality}]: ${masterInfo.originalName}`);
+      
+      fs.writeFileSync(lockFile, JSON.stringify({
+        startTime: Date.now(),
+        inputFile: path.basename(masterInfo.path),
+        outputFile: outputFileName,
+        quality: targetQuality,
+        type: 'mobile'
+      }));
+
+      const qualityProfile = this.config.QUALITY_PROFILES[targetQuality.toUpperCase()];
+      
+      const command = ffmpeg(masterInfo.path)
+        .videoCodec('libx264')
+        .outputOptions([
+          '-crf 23',
+          '-preset fast',
+          '-profile:v baseline',
+          '-level 3.1',
+          '-movflags +faststart',
+          '-map 0:v:0'
+        ])
+        .videoBitrate(qualityProfile.bitrate)
+        .size(`${qualityProfile.width}x${qualityProfile.height}`);
+
+      // Áudio otimizado para móvel
+      if (metadata.audio && metadata.audio.length > 0) {
+        const primaryAudio = this.selectPrimaryAudioTrack(metadata.audio);
+        
+        command.outputOptions([
+          `-map 0:a:${primaryAudio.index}`,
+          '-c:a aac',
+          '-b:a 128k',
+          '-ac 2'
+        ]);
+      }
+
+      command
+        .output(tempOutputPath)
+        .on('end', async () => {
+          try {
+            logger.info(`✅ Conversão Mobile concluída: ${outputFileName}`);
+            
+            const mobileInfo = await this.fileManager.saveWebOptimized({
+              ...masterInfo,
+              path: tempOutputPath
+            }, 'mp4', 'mobile');
+
+            await this.cleanup(lockFile, tempOutputPath);
+            resolve(mobileInfo);
+          } catch (error) {
+            await this.cleanup(lockFile, tempOutputPath);
+            reject(error);
+          }
+        })
+        .on('error', async (err) => {
+          logger.error(`❌ Erro na conversão Mobile: ${err.message}`);
+          await this.cleanup(lockFile, tempOutputPath);
+          reject(err);
+        })
+        .run();
+    });
+  }
+
+  /**
+   * Seleciona a trilha de áudio primária (português > inglês > primeira disponível)
+   */
+  selectPrimaryAudioTrack(audioTracks) {
+    // Prioridade: português, inglês, primeira disponível
+    const priorities = ['por', 'pt', 'pt-br', 'eng', 'en'];
+    
+    for (const lang of priorities) {
+      const track = audioTracks.find(a => a.language.toLowerCase().includes(lang));
+      if (track) return track;
+    }
+    
+    return audioTracks[0]; // Primeira disponível como fallback
+  }
+
+  /**
+   * Gera thumbnails do vídeo
+   */
+  async generateThumbnails(masterInfo, metadata) {
+    try {
+      const duration = metadata.video?.duration || 60;
+      const thumbnailTimes = [
+        Math.floor(duration * 0.1),  // 10%
+        Math.floor(duration * 0.25), // 25% 
+        Math.floor(duration * 0.5),  // 50%
+        Math.floor(duration * 0.75)  // 75%
+      ];
+
+      const thumbnailBuffers = {};
+      
+      for (const [size, dimensions] of Object.entries({
+        small: '320x180',
+        medium: '640x360', 
+        large: '1280x720',
+        poster: '1920x1080'
+      })) {
+        const tempPath = path.join(this.fileManager.paths.TEMP, `${masterInfo.fileId}_${size}_%d.jpg`);
+        
+        await new Promise((resolve, reject) => {
+          ffmpeg(masterInfo.path)
+            .seekInput(thumbnailTimes[0]) // Usar primeiro tempo como principal
+            .outputOptions([
+              '-vframes 1',
+              '-q:v 2'
+            ])
+            .size(dimensions)
+            .output(tempPath.replace('%d', '1'))
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+
+        // Ler arquivo gerado
+        const generatedPath = tempPath.replace('%d', '1');
+        if (await fs.exists(generatedPath)) {
+          thumbnailBuffers[size] = await fs.readFile(generatedPath);
+          await fs.remove(generatedPath);
+        }
+      }
+
+      const savedThumbnails = await this.fileManager.saveThumbnails(masterInfo, thumbnailBuffers);
+      logger.info(`📸 ${Object.keys(savedThumbnails).length} thumbnail(s) gerado(s)`);
+      
+      return savedThumbnails;
+    } catch (error) {
+      logger.error('❌ Erro ao gerar thumbnails:', error);
+      return {};
+    }
+  }
+
+  /**
+   * Extrai legendas internas
+   */
+  async extractSubtitles(masterInfo, metadata) {
+    try {
+      if (!metadata.subtitles || metadata.subtitles.length === 0) {
+        return [];
+      }
+
+      const extractedSubtitles = [];
+
+      for (const [index, subtitle] of metadata.subtitles.entries()) {
+        const outputFile = path.join(
+          this.fileManager.paths.TEMP, 
+          `${masterInfo.fileId}_${subtitle.language}.srt`
+        );
+
         try {
-          await fs.remove(filePath);
-          console.log(`🗑️ Arquivo original removido: ${path.basename(filePath)}`);
-        } catch (error) {
-          console.log(`⚠️ Não foi possível remover o arquivo original: ${error.message}`);
+          await new Promise((resolve, reject) => {
+            ffmpeg(masterInfo.path)
+              .outputOptions([
+                `-map 0:s:${index}`,
+                '-c:s srt'
+              ])
+              .output(outputFile)
+              .on('end', resolve)
+              .on('error', reject)
+              .run();
+          });
+
+          if (await fs.exists(outputFile)) {
+            const content = await fs.readFile(outputFile, 'utf8');
+            await fs.remove(outputFile);
+
+            extractedSubtitles.push({
+              language: subtitle.language,
+              title: subtitle.title,
+              format: 'srt',
+              content
+            });
+          }
+        } catch (extractError) {
+          logger.warn(`⚠️ Erro ao extrair legenda ${subtitle.language}:`, extractError.message);
         }
       }
 
-      return convertedFiles;
+      if (extractedSubtitles.length > 0) {
+        const savedSubtitles = await this.fileManager.saveSubtitles(masterInfo, extractedSubtitles);
+        logger.info(`📝 ${savedSubtitles.length} legenda(s) extraída(s)`);
+        return savedSubtitles;
+      }
 
+      return [];
     } catch (error) {
-      console.error('❌ Erro ao processar arquivo:', error);
-      
-      // Fallback: retornar arquivo original
-      return [{
-        format: path.extname(originalName).substring(1),
-        path: filePath,
-        url: `/videos/${path.basename(filePath)}`,
-        mimeType: this.getMimeType(originalName),
-        isOriginal: true,
-        error: error.message
-      }];
+      logger.error('❌ Erro ao extrair legendas:', error);
+      return [];
     }
   }
 
-  getMimeType(filename) {
-    const ext = path.extname(filename).toLowerCase();
-    const mimeTypes = {
-      '.mp4': 'video/mp4',
-      '.webm': 'video/webm',
-      '.ogg': 'video/ogg',
-      '.avi': 'video/x-msvideo',
-      '.mov': 'video/quicktime',
-      '.wmv': 'video/x-ms-wmv',
-      '.flv': 'video/x-flv',
-      '.mkv': 'video/x-matroska'
-    };
-    return mimeTypes[ext] || 'video/mp4';
-  }
-
-  // Limpar arquivos antigos convertidos
-  async cleanupOldFiles(maxAge = 7 * 24 * 60 * 60 * 1000) { // 7 dias
+  /**
+   * Processo principal de conversão completa
+   */
+  async processVideo(uploadInfo) {
+    const jobId = `job_${uploadInfo.fileId}_${Date.now()}`;
+    
     try {
-      const files = await fs.readdir(this.convertedDir);
-      const now = Date.now();
+      logger.info(`🎬 Iniciando processamento completo: ${uploadInfo.originalName}`);
+      this.processingQueue.set(jobId, { status: 'starting', fileInfo: uploadInfo });
 
-      for (const file of files) {
-        const filePath = path.join(this.convertedDir, file);
-        const stat = await fs.stat(filePath);
-        
-        if (now - stat.mtime.getTime() > maxAge) {
-          await fs.remove(filePath);
-          console.log(`🗑️ Arquivo antigo removido: ${file}`);
-        }
-      }
+      // 1. Mover para processamento
+      const processingInfo = await this.fileManager.moveToProcessing(uploadInfo);
+      this.processingQueue.set(jobId, { status: 'extracting_metadata', fileInfo: processingInfo });
+
+      // 2. Extrair metadados completos
+      const metadata = await this.extractMetadata(processingInfo.path);
+      
+      // 3. Converter para MKV Master (formato principal)
+      this.processingQueue.set(jobId, { status: 'converting_master', fileInfo: processingInfo });
+      const masterInfo = await this.convertToMKVMaster(processingInfo.path, processingInfo, metadata);
+
+      // 4. Gerar versões web otimizadas
+      this.processingQueue.set(jobId, { status: 'generating_web_versions', fileInfo: masterInfo });
+      const webVersions = await this.generateWebVersions(masterInfo, metadata);
+
+      // 5. Gerar thumbnails
+      this.processingQueue.set(jobId, { status: 'generating_thumbnails', fileInfo: masterInfo });
+      const thumbnails = await this.generateThumbnails(masterInfo, metadata);
+
+      // 6. Extrair legendas
+      this.processingQueue.set(jobId, { status: 'extracting_subtitles', fileInfo: masterInfo });
+      const subtitles = await this.extractSubtitles(masterInfo, metadata);
+
+      // 7. Limpeza final
+      await this.fileManager.cleanupTemp(processingInfo.path);
+
+      const result = {
+        success: true,
+        fileId: masterInfo.fileId,
+        originalName: uploadInfo.originalName,
+        master: masterInfo,
+        webVersions,
+        thumbnails,
+        subtitles,
+        metadata,
+        processedAt: new Date().toISOString(),
+        processingTime: Date.now() - uploadInfo.uploadedAt
+      };
+
+      this.processingQueue.delete(jobId);
+      logger.info(`✅ Processamento completo concluído: ${uploadInfo.originalName}`);
+      
+      return result;
     } catch (error) {
-      console.error('Erro na limpeza de arquivos:', error);
+      this.processingQueue.set(jobId, { status: 'error', error: error.message });
+      logger.error(`❌ Erro no processamento de ${uploadInfo.originalName}:`, error);
+      
+      // Limpeza em caso de erro
+      try {
+        await this.fileManager.cleanupTemp(uploadInfo.path);
+      } catch (cleanupError) {
+        logger.error('❌ Erro na limpeza após falha:', cleanupError);
+      }
+
+      throw error;
     }
   }
-} 
+
+  /**
+   * Limpa arquivos temporários
+   */
+  async cleanup(...files) {
+    for (const file of files) {
+      try {
+        if (file && await fs.exists(file)) {
+          await fs.remove(file);
+        }
+      } catch (error) {
+        logger.warn(`⚠️ Erro ao limpar ${file}:`, error.message);
+      }
+    }
+  }
+
+  /**
+   * Obtém status da fila de processamento
+   */
+  getProcessingStatus() {
+    const jobs = Array.from(this.processingQueue.values());
+    return {
+      active: jobs.length,
+      maxConcurrent: this.maxConcurrentJobs,
+      jobs: jobs.map(job => ({
+        status: job.status,
+        fileName: job.fileInfo?.originalName,
+        fileId: job.fileInfo?.fileId
+      }))
+    };
+  }
+}
+
+export default VideoConverter; 

@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import helmet from 'helmet';
+import cors from 'cors';
 
 // Importar módulos personalizados
 import { VideoConverter } from './video-converter.js';
@@ -31,6 +32,12 @@ import logger, {
   logError
 } from '../src/utils/logger.js';
 
+// Importações do novo sistema
+import { UPLOAD_CONFIG, VIDEO_CONFIG } from '../src/utils/constants.js';
+import { validateVideoFile, validateRoomId, validateUsername } from '../src/utils/validation.js';
+import FileManager from './utils/file-manager.js';
+import { securityMiddleware } from './middleware/security.js';
+
 // Carregar variáveis de ambiente
 dotenv.config();
 
@@ -51,7 +58,8 @@ const io = new Server(server, {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  maxHttpBufferSize: 1e8 // 100MB para upload via socket
 });
 
 const PORT = process.env.PORT || 4000;

@@ -116,3 +116,192 @@ test-videos/
 
 # TypeScript
 *.tsbuildinfo
+
+# ============================================
+# 🎬 SISTEMA DE ARQUIVOS MKV ORGANIZADO
+# ============================================
+
+# Storage principal - arquivos processados
+storage/
+!storage/.gitkeep
+
+# Uploads temporários
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# Arquivos em processamento
+storage/processing/*
+!storage/processing/.gitkeep
+
+# Masters MKV por qualidade
+storage/masters/4k/*
+storage/masters/1080p/*
+storage/masters/720p/*
+storage/masters/480p/*
+!storage/masters/**/.gitkeep
+
+# Versões web otimizadas
+storage/web/mp4/*
+storage/web/webm/*
+storage/web/mobile/*
+!storage/web/**/.gitkeep
+
+# Legendas por idioma
+storage/subtitles/pt/*
+storage/subtitles/en/*
+storage/subtitles/es/*
+storage/subtitles/fr/*
+storage/subtitles/auto-generated/*
+!storage/subtitles/**/.gitkeep
+
+# Thumbnails por tamanho
+storage/thumbnails/small/*
+storage/thumbnails/medium/*
+storage/thumbnails/large/*
+storage/thumbnails/poster/*
+!storage/thumbnails/**/.gitkeep
+
+# Metadados extraídos
+storage/metadata/*
+!storage/metadata/.gitkeep
+
+# Arquivos temporários
+storage/temp/daily/*
+storage/temp/processing/*
+storage/temp/failed/*
+!storage/temp/**/.gitkeep
+
+# ============================================
+# 🔗 LINKS SIMBÓLICOS PÚBLICOS
+# ============================================
+
+# Links simbólicos para acesso público (gerados automaticamente)
+public/videos/*
+!public/videos/.gitkeep
+
+# ============================================
+# 📊 LOGS E MONITORAMENTO
+# ============================================
+
+# Logs estruturados do sistema
+logs/*.log
+logs/errors/*
+logs/security/*
+logs/conversions/*
+logs/uploads/*
+!logs/**/.gitkeep
+
+# ============================================
+# 🔄 ARQUIVOS DE PROCESSAMENTO
+# ============================================
+
+# Arquivos de lock de conversão
+*.converting
+*.processing
+*.lock
+
+# Arquivos temporários do FFmpeg
+ffmpeg-*.log
+ffmpeg-temp-*
+
+# ============================================
+# 🐳 DOCKER E CONTAINERIZAÇÃO
+# ============================================
+
+# Docker volumes
+docker-data/
+.dockerignore
+
+# Docker Compose overrides
+docker-compose.override.yml
+docker-compose.*.yml
+
+# ============================================
+# 🔐 SEGURANÇA E CERTIFICADOS
+# ============================================
+
+# Certificados SSL
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+ssl/
+
+# Chaves de API e tokens
+api-keys.json
+tokens.json
+
+# ============================================
+# 📈 MONITORAMENTO E ANALYTICS
+# ============================================
+
+# Dados de métricas
+metrics/
+analytics/
+monitoring/
+
+# ============================================
+# 🧪 TESTES E DESENVOLVIMENTO
+# ============================================
+
+# Arquivos de teste
+test-videos/
+test-uploads/
+coverage/
+.nyc_output/
+
+# Dados de desenvolvimento
+dev-data/
+sample-videos/
+
+# ============================================
+# 💾 BACKUP E RECOVERY
+# ============================================
+
+# Backups automáticos
+backups/
+*.backup
+*.sql
+*.dump
+
+# ============================================
+# 🚀 DEPLOY E PRODUÇÃO
+# ============================================
+
+# Configurações específicas de ambiente
+.env.production.local
+.env.staging
+.env.development.local
+
+# Build artifacts
+build/
+public/build/
+
+# ============================================
+# 📱 ASSETS GERADOS
+# ============================================
+
+# Thumbnails gerados automaticamente
+**/*_thumb_*.jpg
+**/*_poster_*.jpg
+**/*_preview_*.webp
+
+# Sprites de vídeo
+**/*_sprite_*.jpg
+**/*_storyboard_*.vtt
+
+# ============================================
+# 🔧 FERRAMENTAS E UTILITÁRIOS
+# ============================================
+
+# FFmpeg binários temporários
+ffmpeg-*
+ffprobe-*
+
+# Arquivos de configuração temporários
+*.tmp.json
+*.temp.yml
+
+# Scripts de migração executados
+migrations/executed/
