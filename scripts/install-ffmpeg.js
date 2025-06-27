@@ -1,169 +1,129 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import os from 'os';
-import path from 'path';
+import { FFmpegUtils, SystemUtils } from '../src/utils/system.js';
+import logger from '../src/utils/logger.js';
+import { UPLOAD_CONFIG } from '../src/utils/constants.js';
 import fs from 'fs-extra';
-
-const execAsync = promisify(exec);
 
 class FFmpegInstaller {
   constructor() {
-    this.platform = os.platform();
-    this.arch = os.arch();
+    this.ffmpegUtils = new FFmpegUtils();
+    this.systemUtils = new SystemUtils();
+    this.systemInfo = this.systemUtils.getSystemInfo();
   }
 
   async checkFFmpeg() {
-    try {
-      const { stdout } = await execAsync('ffmpeg -version');
-      return {
-        installed: true,
-        version: stdout.split('\n')[0]
-      };
-    } catch (error) {
-      return {
-        installed: false,
-        error: error.message
-      };
+    const result = await this.ffmpegUtils.checkFFmpeg();
+    
+    if (result.installed) {
+      // Verificar codecs MKV
+      const codecCheck = await this.ffmpegUtils.checkCodecs();
+      result.codecs = codecCheck;
+      result.mkvReady = codecCheck.available.includes('hevc') || codecCheck.available.includes('h265');
     }
+    
+    return result;
   }
 
-  async installForWindows() {
-    console.log('🪟 Detectado Windows - Tentando instalar FFmpeg...\n');
+  async attemptInstallation() {
+    console.log(`🎬 Detectado: ${this.systemInfo.platform} ${this.systemInfo.arch}`);
+    console.log('📋 Tentando instalação automática do FFmpeg...\n');
     
-    try {
-      // Tentar usar winget primeiro
-      console.log('📦 Tentando instalar via winget...');
-      await execAsync('winget install Gyan.FFmpeg --accept-source-agreements --accept-package-agreements');
-      console.log('✅ FFmpeg instalado via winget!');
-      return true;
-      
-    } catch (wingetError) {
-      console.log('⚠️ Winget falhou, tentando chocolatey...');
-      
-      try {
-        // Tentar chocolatey
-        await execAsync('choco install ffmpeg -y');
-        console.log('✅ FFmpeg instalado via chocolatey!');
-        return true;
-        
-      } catch (chocoError) {
-        console.log('❌ Chocolatey também falhou.');
-        console.log('\n📋 Instalação manual necessária:');
-        console.log('1. Acesse: https://www.gyan.dev/ffmpeg/builds/');
-        console.log('2. Baixe "ffmpeg-release-essentials.zip"');
-        console.log('3. Extraia para C:\\ffmpeg');
-        console.log('4. Adicione C:\\ffmpeg\\bin ao PATH do sistema');
-        console.log('\n🔧 Ou execute como administrador:');
-        console.log('   winget install Gyan.FFmpeg');
-        return false;
-      }
-    }
-  }
-
-  async installForLinux() {
-    console.log('🐧 Detectado Linux - Tentando instalar FFmpeg...\n');
+    const result = await this.ffmpegUtils.attemptAutoInstall();
     
-    try {
-      // Detectar distribuição
-      let installCommand = '';
-      
-      try {
-        await execAsync('which apt');
-        installCommand = 'sudo apt update && sudo apt install -y ffmpeg';
-      } catch {
-        try {
-          await execAsync('which yum');
-          installCommand = 'sudo yum install -y ffmpeg';
-        } catch {
-          try {
-            await execAsync('which pacman');
-            installCommand = 'sudo pacman -S ffmpeg --noconfirm';
-          } catch {
-            throw new Error('Gerenciador de pacotes não suportado');
-          }
-        }
-      }
-      
-      console.log(`📦 Executando: ${installCommand}`);
-      await execAsync(installCommand);
-      console.log('✅ FFmpeg instalado com sucesso!');
+    if (result.success) {
+      console.log(`✅ FFmpeg instalado com sucesso via ${result.manager}!`);
+      console.log(`📋 Versão: ${result.version}`);
       return true;
-      
-    } catch (error) {
+    } else {
       console.log('❌ Falha na instalação automática.');
-      console.log('\n📋 Tente manualmente:');
-      console.log('Ubuntu/Debian: sudo apt install ffmpeg');
-      console.log('CentOS/RHEL:   sudo yum install ffmpeg');
-      console.log('Arch Linux:    sudo pacman -S ffmpeg');
+      
+      if (result.attempts?.length > 0) {
+        console.log('\n🔍 Tentativas realizadas:');
+        result.attempts.forEach(attempt => {
+          const status = attempt.success ? '✅' : '❌';
+          console.log(`   ${status} ${attempt.manager}: ${attempt.error || 'OK'}`);
+        });
+      }
+      
+      console.log('\n📋 Instalação manual necessária:');
+      this.showManualInstructions();
       return false;
     }
   }
 
-  async installForMac() {
-    console.log('🍎 Detectado macOS - Tentando instalar FFmpeg...\n');
+  showManualInstructions() {
+    const instructions = this.ffmpegUtils.getManualInstructions();
     
-    try {
-      // Verificar se Homebrew está instalado
-      await execAsync('which brew');
-      
-      console.log('📦 Instalando via Homebrew...');
-      await execAsync('brew install ffmpeg');
-      console.log('✅ FFmpeg instalado com sucesso!');
-      return true;
-      
-    } catch (error) {
-      console.log('❌ Homebrew não encontrado ou falha na instalação.');
-      console.log('\n📋 Para instalar manualmente:');
-      console.log('1. Instale Homebrew: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"');
-      console.log('2. Execute: brew install ffmpeg');
-      return false;
-    }
+    console.log('\n' + instructions.title);
+    console.log('═'.repeat(50));
+    
+    instructions.steps.forEach(step => {
+      if (step.trim() === '') {
+        console.log('');
+      } else {
+        console.log(step);
+      }
+    });
   }
 
   async install() {
-    console.log('🎬 Instalador Automático do FFmpeg - Friend Cine\n');
-    console.log('═'.repeat(50));
+    console.log('🎬 Instalador Automático do FFmpeg - Friend Cine MKV\n');
+    console.log('═'.repeat(60));
+    
+    // Exibir informações do sistema
+    console.log(`🖥️  Sistema: ${this.systemInfo.platform} ${this.systemInfo.arch}`);
+    console.log(`⚡ CPUs: ${this.systemInfo.cpus} cores`);
+    console.log(`💾 RAM: ${Math.round(this.systemInfo.totalMemory / 1024 / 1024 / 1024)}GB`);
+    console.log(`🟢 Node.js: ${this.systemInfo.nodeVersion}\n`);
     
     // Verificar se já está instalado
+    console.log('🔍 Verificando FFmpeg...');
     const check = await this.checkFFmpeg();
+    
     if (check.installed) {
       console.log('✅ FFmpeg já está instalado!');
       console.log(`📋 Versão: ${check.version}`);
+      
+      if (check.codecs) {
+        console.log(`🎬 Codecs MKV: ${check.codecs.available.length}/${check.codecs.available.length + check.codecs.missing.length}`);
+        console.log(`📊 Disponíveis: ${check.codecs.available.join(', ')}`);
+        
+        if (check.mkvReady) {
+          console.log('🎉 Sistema pronto para conversão MKV H.265!');
+        } else {
+          console.log('⚠️ H.265/HEVC não disponível - conversões limitadas');
+        }
+      }
+      
       return true;
     }
     
     console.log('❌ FFmpeg não encontrado. Iniciando instalação...\n');
     
-    let success = false;
-    
-    switch (this.platform) {
-      case 'win32':
-        success = await this.installForWindows();
-        break;
-      case 'linux':
-        success = await this.installForLinux();
-        break;
-      case 'darwin':
-        success = await this.installForMac();
-        break;
-      default:
-        console.log(`❌ Plataforma não suportada: ${this.platform}`);
-        return false;
-    }
+    // Tentar instalação
+    const success = await this.attemptInstallation();
     
     if (success) {
-      console.log('\n🔄 Verificando instalação...');
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Aguardar 2s
+      console.log('\n🔄 Verificando instalação final...');
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Aguardar 3s
       
       const finalCheck = await this.checkFFmpeg();
       if (finalCheck.installed) {
         console.log('🎉 FFmpeg instalado e funcionando!');
         console.log(`📋 Versão: ${finalCheck.version}`);
-        console.log('\n✨ Agora você pode usar conversão automática de vídeos!');
+        
+        if (finalCheck.mkvReady) {
+          console.log('✨ Sistema MKV completo - conversão H.265/FLAC disponível!');
+        } else {
+          console.log('⚠️ FFmpeg instalado, mas sem H.265 - funcionalidade limitada');
+        }
+        
         return true;
       } else {
-        console.log('⚠️ Instalação aparentemente bem-sucedida, mas FFmpeg não está no PATH.');
-        console.log('💡 Tente reiniciar o terminal ou computador.');
+        console.log('⚠️ Instalação aparentemente bem-sucedida, mas FFmpeg não foi encontrado.');
+        console.log('💡 Possíveis soluções:');
+        console.log('   - Reinicie o terminal/IDE');
+        console.log('   - Reinicie o computador');
+        console.log('   - Verifique se foi adicionado ao PATH');
         return false;
       }
     }
@@ -171,42 +131,76 @@ class FFmpegInstaller {
     return false;
   }
 
-  async createVideoExample() {
-    console.log('\n📹 Quer testar a conversão com um vídeo de exemplo?');
-    console.log('   Execute: node test-conversion.js');
+  async checkStorageStructure() {
+    console.log('\n📁 Verificando estrutura de storage...');
+    
+    const storagePaths = Object.values(UPLOAD_CONFIG.PATHS);
+    let allExists = true;
+    
+    for (const storagePath of storagePaths) {
+      try {
+        await fs.ensureDir(storagePath);
+        console.log(`✅ ${storagePath}`);
+      } catch (error) {
+        console.log(`❌ ${storagePath} - Erro: ${error.message}`);
+        allExists = false;
+      }
+    }
+    
+    return allExists;
   }
 }
 
 // Script principal
 async function main() {
-  const installer = new FFmpegInstaller();
-  
-  const args = process.argv.slice(2);
-  
-  if (args.includes('--check') || args.includes('-c')) {
-    // Apenas verificar se está instalado
-    const check = await installer.checkFFmpeg();
-    if (check.installed) {
-      console.log('✅ FFmpeg instalado:', check.version);
-      process.exit(0);
-    } else {
-      console.log('❌ FFmpeg não encontrado');
-      process.exit(1);
-    }
-  } else {
-    // Instalar
-    const success = await installer.install();
+  try {
+    const installer = new FFmpegInstaller();
+    const args = process.argv.slice(2);
     
-    if (success) {
-      await installer.createVideoExample();
-      console.log('\n🚀 Execute: npm run dev:all');
-      console.log('   Para iniciar o Friend Cine com conversão automática!');
+    if (args.includes('--check') || args.includes('-c')) {
+      // Apenas verificar se está instalado
+      const check = await installer.checkFFmpeg();
+      
+      if (check.installed) {
+        console.log('✅ FFmpeg instalado:', check.version);
+        
+        if (check.codecs) {
+          const codecStatus = check.mkvReady ? '🎬 MKV Ready' : '⚠️ Limited';
+          console.log(`${codecStatus} - Codecs: ${check.codecs.available.join(', ')}`);
+        }
+        
+        process.exit(0);
+      } else {
+        console.log('❌ FFmpeg não encontrado');
+        process.exit(1);
+      }
     } else {
-      console.log('\n🔧 Conversão automática não estará disponível.');
-      console.log('   O sistema funcionará apenas com arquivos compatíveis.');
+      // Instalar
+      const success = await installer.install();
+      
+      if (success) {
+        console.log('\n🎯 Próximos Passos:');
+        console.log('   1. npm start              # Iniciar sistema completo');
+        console.log('   2. npm run check-system   # Testar tudo');
+        console.log('   3. npm run test:codec     # Testar codecs no navegador');
+        console.log('\n✨ Friend Cine MKV está pronto para conversão H.265/FLAC!');
+      } else {
+        console.log('\n🔧 FFmpeg não foi instalado.');
+        console.log('   ✅ O sistema ainda funcionará com:');
+        console.log('      - Reprodução de vídeos compatíveis');
+        console.log('      - Upload de arquivos MKV existentes');
+        console.log('      - Funcionalidades de sala e chat');
+        console.log('\n💡 Para habilitar conversão automática:');
+        console.log('   - Instale FFmpeg manualmente');
+        console.log('   - Execute: npm run check-ffmpeg');
+      }
+      
+      process.exit(success ? 0 : 1);
     }
-    
-    process.exit(success ? 0 : 1);
+  } catch (error) {
+    console.error('❌ Erro no instalador:', error.message);
+    logger.error('FFmpeg installer error', error);
+    process.exit(1);
   }
 }
 

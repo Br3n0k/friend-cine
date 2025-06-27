@@ -1,9 +1,23 @@
 {
   "name": "friend-cine",
   "type": "module",
-  "version": "1.0.0",
-  "description": "Plataforma colaborativa para assistir filmes em conjunto online",
-  "keywords": ["cinema", "streaming", "colaborativo", "socket.io", "astro"],
+  "version": "2.0.0",
+  "description": "Plataforma colaborativa para assistir filmes em conjunto online com conversão automática MKV H.265/FLAC",
+  "keywords": [
+    "cinema", 
+    "streaming", 
+    "colaborativo", 
+    "socket.io", 
+    "astro", 
+    "mkv", 
+    "h265", 
+    "hevc", 
+    "flac", 
+    "ffmpeg", 
+    "video-conversion",
+    "multi-audio",
+    "subtitles"
+  ],
   "author": "Friend Cine Team",
   "license": "MIT",
   "repository": {
@@ -20,24 +34,59 @@
     "build": "astro check && astro build",
     "preview": "astro preview",
     "astro": "astro",
+    
     "server": "node server/index.js",
     "dev:server": "nodemon server/index.js",
     "dev:frontend": "astro dev",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev:frontend\"",
+    
     "setup": "npm run install-ffmpeg && npm run check-system",
+    "setup:quick": "npm run check-system",
+    "setup:full": "npm run install-ffmpeg && npm run check-system && npm run storage:init",
+    
     "install-ffmpeg": "node scripts/install-ffmpeg.js",
     "check-ffmpeg": "node scripts/install-ffmpeg.js --check",
+    "ffmpeg:install": "npm run install-ffmpeg",
+    "ffmpeg:check": "npm run check-ffmpeg",
+    "ffmpeg:codecs": "ffmpeg -codecs | grep -E \"(hevc|h265|flac|aac|libx264|libx265)\"",
+    
     "check-system": "node scripts/test-system.js",
     "test": "npm run check-system",
-    "test:codec": "node -p \"console.log('🧪 Acesse: http://localhost:3000/dev/test-codec.html')\"",
-    "test:connection": "node -p \"console.log('🧪 Acesse: http://localhost:3000/dev/test-connection.html')\"",
+    "test:full": "npm run check-system && npm run test:codec:cli && npm run test:connection:cli",
+    "test:codec": "node -p \"console.log('🧪 Teste Codecs: http://localhost:3000/dev/test-codec.html')\" && start http://localhost:3000/dev/test-codec.html",
+    "test:codec:cli": "node -p \"console.log('🧪 Acesse: http://localhost:3000/dev/test-codec.html')\"",
+    "test:connection": "node -p \"console.log('🧪 Teste Conexão: http://localhost:3000/dev/test-connection.html')\" && start http://localhost:3000/dev/test-connection.html",
+    "test:connection:cli": "node -p \"console.log('🧪 Acesse: http://localhost:3000/dev/test-connection.html')\"",
+    
+    "storage:init": "node -e \"const fs=require('fs-extra'); ['storage/uploads','storage/processing','storage/masters','storage/web','storage/subtitles','storage/thumbnails','storage/metadata','storage/temp'].forEach(dir => fs.ensureDirSync(dir)); console.log('✅ Estrutura storage criada');\"",
+    "storage:clean": "rm -rf storage/uploads/* storage/processing/* storage/temp/*",
+    "storage:backup": "node -e \"const fs=require('fs-extra'); const date=new Date().toISOString().split('T')[0]; fs.copySync('storage', 'backup-'+date); console.log('✅ Backup criado: backup-'+date);\"",
+    "storage:stats": "node -e \"const fs=require('fs-extra'); const dirs=['uploads','processing','masters','web','subtitles','thumbnails','metadata','temp']; dirs.forEach(d => { try { const files=fs.readdirSync('storage/'+d); console.log(d+': '+files.length+' arquivos'); } catch(e) { console.log(d+': pasta não existe'); } });\"",
+    
     "lint": "astro check",
-    "clean": "rm -rf dist .astro node_modules/.astro storage/temp/* storage/processing/*",
-    "clean:storage": "rm -rf storage/uploads/* storage/processing/* storage/temp/*",
-    "clean:all": "npm run clean && npm run clean:storage",
-    "docker:build": "docker build -t friend-cine .",
-    "docker:run": "docker run -p 3000:3000 -p 4000:4000 -v $(pwd)/storage:/app/storage friend-cine",
-    "postinstall": "npm run setup"
+    "lint:fix": "astro check --fix",
+    
+    "clean": "rm -rf dist .astro node_modules/.astro",
+    "clean:storage": "npm run storage:clean",
+    "clean:logs": "rm -rf logs/*",
+    "clean:all": "npm run clean && npm run clean:storage && npm run clean:logs",
+    "clean:dev": "npm run clean && npm install",
+    
+    "logs:view": "tail -f logs/combined.log",
+    "logs:errors": "tail -f logs/error.log",
+    "logs:clear": "npm run clean:logs",
+    
+    "docker:build": "docker build -t friend-cine-mkv .",
+    "docker:run": "docker run -p 3000:3000 -p 4000:4000 -v $(pwd)/storage:/app/storage friend-cine-mkv",
+    "docker:dev": "docker-compose up --build",
+    "docker:stop": "docker-compose down",
+    
+    "health": "curl -f http://localhost:4000/api/health || exit 1",
+    "status": "npm run health && npm run check-system",
+    
+    "help": "node -e \"console.log('\\n🎬 FRIEND CINE MKV - Comandos Disponíveis\\n'); console.log('═'.repeat(50)); console.log('\\n🚀 INÍCIO RÁPIDO:'); console.log('  npm start              # Iniciar sistema completo'); console.log('  npm run setup          # Configurar sistema + FFmpeg'); console.log('  npm run status         # Verificar status geral'); console.log('\\n🎬 FFMPEG:'); console.log('  npm run ffmpeg:install # Instalar FFmpeg'); console.log('  npm run ffmpeg:check   # Verificar FFmpeg e codecs'); console.log('  npm run ffmpeg:codecs  # Listar codecs MKV'); console.log('\\n🧪 TESTES:'); console.log('  npm test               # Testar sistema completo'); console.log('  npm run test:codec     # Testar codecs (navegador)'); console.log('  npm run test:connection # Testar conectividade'); console.log('\\n📦 STORAGE:'); console.log('  npm run storage:stats  # Estatísticas de arquivos'); console.log('  npm run storage:clean  # Limpar temporários'); console.log('  npm run storage:backup # Backup do storage'); console.log('\\n🛠️  DESENVOLVIMENTO:'); console.log('  npm run dev:server     # Backend apenas'); console.log('  npm run dev:frontend   # Frontend apenas'); console.log('  npm run logs:view      # Ver logs em tempo real'); console.log('\\n🧹 LIMPEZA:'); console.log('  npm run clean:all      # Limpar tudo'); console.log('  npm run clean:storage  # Limpar apenas storage'); console.log('\\n🐳 DOCKER:'); console.log('  npm run docker:build   # Build da imagem'); console.log('  npm run docker:run     # Executar container'); console.log('\\n✨ Sistema MKV H.265/FLAC pronto!\\n');\"",
+    
+    "postinstall": "npm run setup:quick"
   },
   "dependencies": {
     "@astrojs/node": "^9.2.2",
@@ -72,5 +121,46 @@
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=8.0.0"
+  },
+  "config": {
+    "ffmpeg": {
+      "required": true,
+      "codecs": ["hevc", "h265", "flac", "aac", "libx264", "libx265"],
+      "formats": ["mkv", "mp4", "webm"]
+    },
+    "storage": {
+      "maxFileSize": "5GB",
+      "supportedFormats": [".mkv", ".mp4", ".avi", ".mov", ".webm", ".flv", ".wmv", ".m4v", ".3gp"],
+      "outputFormats": {
+        "master": "mkv",
+        "web": ["mp4", "webm"],
+        "mobile": "mp4"
+      }
+    },
+    "quality": {
+      "profiles": ["4k", "1080p", "720p", "480p"],
+      "defaultProfile": "1080p",
+      "videoCodec": "hevc",
+      "audioCodec": "flac"
+    }
+  },
+  "main": "server/index.js",
+  "files": [
+    "server/",
+    "src/",
+    "public/",
+    "scripts/",
+    "dev/",
+    "docs/",
+    "storage/",
+    "astro.config.mjs",
+    "tailwind.config.js",
+    "tsconfig.json",
+    ".env.example"
+  ],
+  "directories": {
+    "lib": "src",
+    "doc": "docs",
+    "test": "dev"
   }
 }

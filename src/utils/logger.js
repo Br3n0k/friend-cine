@@ -192,4 +192,15 @@ export function logPerformance(operation, duration, details = {}) {
   });
 }
 
+// Função para log de operações de arquivo
+export function logFileOperation(operation, originalFile, outputFile, status, error = null) {
+  logger.info('File Operation', {
+    operation,
+    originalFile,
+    outputFile,
+    status,
+    error: error?.message || error
+  });
+}
+
 export default logger; 

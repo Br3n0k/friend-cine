@@ -166,7 +166,7 @@ export const CHAT_CONFIG = {
 };
 
 export const ERROR_MESSAGES = {
-  FILE_TOO_LARGE: 'Arquivo muito grande. Tamanho máximo: 2GB',
+  FILE_TOO_LARGE: 'Arquivo muito grande. Tamanho máximo: 5GB',
   INVALID_FILE_TYPE: 'Tipo de arquivo não suportado',
   UPLOAD_FAILED: 'Falha no upload do arquivo',
   ROOM_NOT_FOUND: 'Sala não encontrada',
