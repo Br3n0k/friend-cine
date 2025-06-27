@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="filmGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5CF6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Film reel background -->
+  <circle cx="50" cy="50" r="45" fill="url(#filmGradient)" />
+  
+  <!-- Inner circle -->
+  <circle cx="50" cy="50" r="30" fill="#1F2937" />
+  
+  <!-- Film holes -->
+  <circle cx="50" cy="20" r="4" fill="#374151" />
+  <circle cx="50" cy="80" r="4" fill="#374151" />
+  <circle cx="20" cy="50" r="4" fill="#374151" />
+  <circle cx="80" cy="50" r="4" fill="#374151" />
+  
+  <!-- Play button -->
+  <polygon points="45,40 45,60 65,50" fill="#F3F4F6" />
+</svg>

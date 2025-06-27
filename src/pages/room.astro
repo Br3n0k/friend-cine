@@ -1,0 +1,941 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Friend Cine - Sala de Cinema">
+  <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-140px)]">
+    <!-- Player de Vídeo -->
+    <div class="lg:col-span-3">
+      <div class="glass-effect rounded-xl p-6 h-full">
+        <div class="flex items-center justify-between mb-4">
+          <h2 id="room-title" class="text-xl font-bold text-white flex items-center">
+            <i class="fas fa-film mr-2 text-purple-400"></i>
+            Carregando sala...
+          </h2>
+          <div class="flex items-center space-x-4">
+            <div id="user-count" class="flex items-center text-gray-300">
+              <i class="fas fa-users mr-2"></i>
+              <span>0 usuários</span>
+            </div>
+            <button id="leave-room" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+              <i class="fas fa-sign-out-alt mr-2"></i>Sair
+            </button>
+          </div>
+        </div>
+        
+        <div class="relative bg-black rounded-lg overflow-hidden" style="height: calc(100% - 80px);">
+          <video id="video-player" class="video-js vjs-default-skin" controls preload="metadata" 
+                 data-setup='{"responsive": true, "fluid": true, "muted": false, "volume": 0.8}'>
+            <p class="vjs-no-js">
+              Para assistir este vídeo, por favor
+              <a href="https://videojs.com/html5-video-support/" target="_blank">
+                habilite JavaScript
+              </a>, e considere atualizar para um navegador que
+              <a href="https://videojs.com/html5-video-support/" target="_blank">
+                suporte vídeo HTML5
+              </a>.
+            </p>
+          </video>
+          
+          <!-- Overlay de status -->
+          <div id="sync-status" class="absolute top-4 right-4 px-3 py-2 bg-black bg-opacity-70 rounded-lg text-white text-sm hidden">
+            <i class="fas fa-sync-alt fa-spin mr-2"></i>Sincronizando...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Painel Lateral -->
+    <div class="lg:col-span-1 flex flex-col">
+      <!-- Usuários Online -->
+      <div class="glass-effect rounded-xl p-4 mb-4">
+        <h3 class="text-lg font-semibold text-white mb-3 flex items-center">
+          <i class="fas fa-users mr-2 text-blue-400"></i>
+          Usuários Online
+        </h3>
+        <div id="users-list" class="space-y-2 max-h-32 overflow-y-auto">
+          <!-- Users will be loaded here -->
+        </div>
+      </div>
+
+      <!-- Chat -->
+      <div class="glass-effect rounded-xl p-4 flex-1 flex flex-col">
+        <h3 class="text-lg font-semibold text-white mb-3 flex items-center">
+          <i class="fas fa-comments mr-2 text-green-400"></i>
+          Chat
+        </h3>
+        
+        <div id="chat-messages" class="flex-1 overflow-y-auto chat-container mb-4 space-y-2">
+          <!-- Chat messages will appear here -->
+        </div>
+        
+        <div class="flex space-x-2">
+          <input type="text" id="chat-input" placeholder="Digite sua mensagem..." 
+                 class="flex-1 p-2 bg-gray-800 text-white rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none text-sm">
+          <button id="send-message" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+            <i class="fas fa-paper-plane"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controles de Audio e Legendas -->
+  <div id="audio-subtitle-controls" class="fixed bottom-4 left-4 space-x-2 hidden">
+    <button id="audio-track-btn" class="px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors">
+      <i class="fas fa-volume-up mr-2"></i>Áudio
+    </button>
+    <button id="subtitle-track-btn" class="px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors">
+      <i class="fas fa-closed-captioning mr-2"></i>Legendas
+    </button>
+  </div>
+
+  <!-- Menu de seleção de faixas -->
+  <div id="track-menu" class="fixed bottom-16 left-4 bg-gray-800 rounded-lg p-4 hidden">
+    <div id="audio-tracks" class="mb-4">
+      <h4 class="text-white font-medium mb-2">Faixas de Áudio</h4>
+      <div id="audio-tracks-list" class="space-y-1">
+        <!-- Audio tracks will appear here -->
+      </div>
+    </div>
+    <div id="subtitle-tracks">
+      <h4 class="text-white font-medium mb-2">Legendas</h4>
+      <div id="subtitle-tracks-list" class="space-y-1">
+        <!-- Subtitle tracks will appear here -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // @ts-nocheck
+    // Variáveis globais
+    let socket = null;
+    let player = null;
+    let roomId = null;
+    let username = null;
+    let isSeekingFromSync = false;
+
+    // Função principal que executa quando tudo está carregado
+    function startApp() {
+      console.log('🎬 Iniciando Friend Cine Room...');
+      console.log('🔍 Verificando dependências...');
+      console.log('- Socket.io disponível:', typeof io !== 'undefined');
+      console.log('- Video.js disponível:', typeof videojs !== 'undefined');
+      
+      // Extrair parâmetros da URL
+      const urlParams = new URLSearchParams(window.location.search);
+      roomId = urlParams.get('room');
+      username = urlParams.get('username');
+
+      if (!roomId || !username) {
+        alert('Parâmetros inválidos');
+        window.location.href = '/';
+        return;
+      }
+
+      console.log('📋 Sala:', roomId, '- Usuário:', username);
+
+      // Verificar se Socket.io está disponível
+      if (typeof io === 'undefined') {
+        console.error('❌ Socket.io não encontrado');
+        console.log('🔄 Tentando novamente em 2 segundos...');
+        setTimeout(startApp, 2000);
+        return;
+      }
+
+      // Conectar com o servidor
+      connectToServer();
+      
+      // Configurar event listeners
+      setupEventListeners();
+    }
+
+    function connectToServer() {
+      console.log('🔌 Conectando ao servidor...');
+      socket = io('http://localhost:4000');
+
+      socket.on('connect', () => {
+        console.log('✅ Conectado ao servidor');
+        socket.emit('join-room', { roomId: roomId, username: username });
+      });
+
+      socket.on('room-state', async (roomState) => {
+        console.log('📊 Estado da sala recebido:', roomState);
+        
+        // Atualizar título da sala
+        document.getElementById('room-title').innerHTML = 
+          `<i class="fas fa-film mr-2 text-purple-400"></i>${roomState.id}`;
+
+        // Inicializar player se necessário
+        if (!player) {
+          await initializePlayer(`/videos/${roomState.videoFile}`);
+        }
+
+        // Sincronizar estado do vídeo
+        if (player) {
+          isSeekingFromSync = true;
+          player.currentTime(roomState.currentTime);
+          
+          if (roomState.isPlaying) {
+            player.play();
+          } else {
+            player.pause();
+          }
+          
+          setTimeout(() => { isSeekingFromSync = false; }, 500);
+        }
+
+        // Atualizar lista de usuários
+        updateUsersList(roomState.users);
+        updateUserCount(roomState.userCount);
+
+        // Carregar mensagens do chat
+        loadChatMessages(roomState.chatMessages);
+      });
+
+      socket.on('video-sync', (data) => {
+        if (player && !isSeekingFromSync) {
+          showSyncStatus();
+          isSeekingFromSync = true;
+          
+          player.currentTime(data.currentTime);
+          
+          if (data.action === 'play') {
+            player.play();
+          } else if (data.action === 'pause') {
+            player.pause();
+          }
+          
+          setTimeout(() => {
+            isSeekingFromSync = false;
+            hideSyncStatus();
+          }, 500);
+        }
+      });
+
+      socket.on('video-seek', (data) => {
+        if (player && !isSeekingFromSync) {
+          showSyncStatus();
+          isSeekingFromSync = true;
+          player.currentTime(data.currentTime);
+          
+          setTimeout(() => {
+            isSeekingFromSync = false;
+            hideSyncStatus();
+          }, 500);
+        }
+      });
+
+      socket.on('user-joined', (data) => {
+        addChatMessage('Sistema', `${data.username} entrou na sala`, 'system');
+        updateUserCount(data.userCount);
+      });
+
+      socket.on('user-left', (data) => {
+        addChatMessage('Sistema', `${data.username} saiu da sala`, 'system');
+        updateUserCount(data.userCount);
+      });
+
+      socket.on('new-chat-message', (message) => {
+        addChatMessage(message.username, message.message, 'user');
+      });
+
+      socket.on('room-closed', (data) => {
+        alert(`⚠️ ${data.message}`);
+        console.log('🚪 Sala fechada pelo servidor:', data.message);
+        
+        // Redirecionar para página inicial
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
+      });
+    }
+
+    async function initializePlayer(videoSrc) {
+      console.log('📹 Inicializando player com:', videoSrc);
+      
+      if (typeof videojs === 'undefined') {
+        console.error('❌ Video.js não encontrado');
+        return;
+      }
+
+      // Dispose do player anterior se existir
+      if (player) {
+        console.log('🔄 Removendo player anterior...');
+        player.dispose();
+        player = null;
+      }
+
+      player = videojs('video-player', {
+        controls: true,
+        responsive: true,
+        fluid: true,
+        playbackRates: [0.5, 1, 1.25, 1.5, 2],
+        muted: false, // Garantir que não está mutado
+        volume: 0.8, // Volume padrão
+        preload: 'metadata',
+        plugins: {
+          // Habilitar plugins para múltiplas trilhas
+        }
+      });
+
+      // Criar múltiplas fontes para fallback
+      const sources = await createVideoSources(videoSrc);
+      console.log(`🎬 Fontes de vídeo disponíveis:`, sources);
+      
+      // Tentar carregar a melhor fonte disponível
+      for (const source of sources) {
+        try {
+          player.src(source);
+          console.log(`🔄 Tentando carregar: ${source.type} - ${source.src}`);
+          break;
+        } catch (error) {
+          console.log(`⚠️ Falha ao carregar ${source.type}, tentando próximo...`);
+        }
+      }
+
+      // Event listeners do player
+      player.on('play', () => {
+        if (!isSeekingFromSync && socket) {
+          socket.emit('video-action', {
+            roomId: roomId,
+            action: 'play',
+            currentTime: player.currentTime()
+          });
+        }
+      });
+
+      player.on('pause', () => {
+        if (!isSeekingFromSync && socket) {
+          socket.emit('video-action', {
+            roomId: roomId,
+            action: 'pause',
+            currentTime: player.currentTime()
+          });
+        }
+      });
+
+      player.on('seeked', () => {
+        if (!isSeekingFromSync && socket) {
+          socket.emit('seek-video', {
+            roomId: roomId,
+            currentTime: player.currentTime()
+          });
+        }
+      });
+
+      // Detectar erro de compatibilidade
+      player.on('error', () => {
+        const error = player.error();
+        if (error && error.code === 4) { // MEDIA_ERR_SRC_NOT_SUPPORTED
+          console.log('❌ Formato não suportado, oferecendo soluções...');
+          showVideoCompatibilityError(videoSrc);
+        }
+      });
+
+      player.ready(() => {
+        console.log('✅ Player está pronto');
+        
+        // Garantir que o áudio não está mutado
+        if (player.muted()) {
+          player.muted(false);
+          console.log('🔊 Áudio desmutado');
+        }
+        
+        // Definir volume se estiver muito baixo
+        if (player.volume() < 0.1) {
+          player.volume(0.8);
+          console.log('🔊 Volume ajustado para 80%');
+        }
+        
+        console.log('🔊 Status do áudio:');
+        console.log('  - Mutado:', player.muted());
+        console.log('  - Volume:', player.volume());
+        
+        // Verificar faixas de áudio
+        setTimeout(() => {
+          checkAndSetupAudioTracks();
+        }, 1000);
+      });
+
+      // Função para detectar e configurar múltiplas trilhas de áudio
+      function checkAndSetupAudioTracks() {
+        const videoElement = player.el().querySelector('video');
+        
+        console.log('🔍 Verificando trilhas de áudio...');
+        console.log('📹 Informações do vídeo HTML5:');
+        console.log('  - Duração:', videoElement.duration);
+        console.log('  - Tem áudio:', !videoElement.muted);
+        console.log('  - Volume HTML5:', videoElement.volume);
+        
+        // Forçar unmute no elemento HTML5
+        videoElement.muted = false;
+        videoElement.volume = 0.8;
+        
+        // Verificar Video.js audioTracks
+        const vjsAudioTracks = player.audioTracks();
+        console.log('🎵 Video.js faixas de áudio:', vjsAudioTracks.length);
+        
+        // Verificar HTML5 audioTracks
+        if (videoElement.audioTracks && videoElement.audioTracks.length > 0) {
+          console.log('✅ HTML5 faixas de áudio encontradas:', videoElement.audioTracks.length);
+          
+          // Criar botão de controle de áudio personalizado
+          createAudioTrackController(videoElement);
+          
+          // Listar todas as trilhas disponíveis
+          for (let i = 0; i < videoElement.audioTracks.length; i++) {
+            const track = videoElement.audioTracks[i];
+            console.log(`🎵 Trilha ${i + 1}:`, {
+              id: track.id,
+              kind: track.kind,
+              label: track.label,
+              language: track.language,
+              enabled: track.enabled
+            });
+          }
+          
+        } else {
+          console.log('❌ Nenhuma faixa de áudio detectada');
+          console.log('💡 Tentando método alternativo...');
+          
+          // Método alternativo: verificar se há múltiplas trilhas via MediaSource
+          checkAlternativeAudioMethod(videoElement);
+        }
+      }
+
+      // Criar controle personalizado para troca de faixas de áudio
+      function createAudioTrackController(videoElement) {
+        console.log('🎛️ Criando controle de faixas de áudio...');
+        
+        // Remover controle anterior se existir
+        const existingControl = document.getElementById('audio-track-control');
+        if (existingControl) {
+          existingControl.remove();
+        }
+        
+        // Criar botão de controle
+        const controlButton = document.createElement('button');
+        controlButton.id = 'audio-track-control';
+        controlButton.className = 'absolute top-4 right-20 bg-purple-600/80 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition-all duration-200 flex items-center space-x-2 z-50';
+        controlButton.innerHTML = '<i class="fas fa-language"></i> <span id="current-audio-lang">ENG</span>';
+        
+        // Menu dropdown
+        const dropdown = document.createElement('div');
+        dropdown.id = 'audio-dropdown';
+        dropdown.className = 'absolute top-12 right-0 bg-gray-800 rounded-lg shadow-lg min-w-40 hidden z-50';
+        
+        // Popular opções baseadas nas trilhas disponíveis
+        const tracks = videoElement.audioTracks;
+        for (let i = 0; i < tracks.length; i++) {
+          const track = tracks[i];
+          const option = document.createElement('button');
+          option.className = 'w-full text-left px-4 py-2 text-white hover:bg-gray-700 transition-colors';
+          
+          // Determinar idioma baseado no index (eng=0, por=1)
+          const lang = i === 0 ? 'Inglês' : 'Português';
+          const langCode = i === 0 ? 'ENG' : 'POR';
+          
+          option.innerHTML = `<i class="fas fa-volume-up mr-2"></i>${lang}`;
+          option.onclick = () => switchAudioTrack(i, langCode);
+          
+          dropdown.appendChild(option);
+        }
+        
+        controlButton.appendChild(dropdown);
+        
+        // Toggle dropdown
+        controlButton.onclick = (e) => {
+          e.stopPropagation();
+          dropdown.classList.toggle('hidden');
+        };
+        
+        // Fechar dropdown ao clicar fora
+        document.addEventListener('click', () => {
+          dropdown.classList.add('hidden');
+        });
+        
+        // Adicionar ao player
+        const playerContainer = player.el();
+        playerContainer.style.position = 'relative';
+        playerContainer.appendChild(controlButton);
+      }
+
+      // Trocar faixa de áudio
+      function switchAudioTrack(trackIndex, langCode) {
+        console.log(`🔄 Trocando para trilha ${trackIndex} (${langCode})`);
+        
+        const videoElement = player.el().querySelector('video');
+        const tracks = videoElement.audioTracks;
+        
+        // Desabilitar todas as trilhas
+        for (let i = 0; i < tracks.length; i++) {
+          tracks[i].enabled = false;
+        }
+        
+        // Habilitar trilha selecionada
+        if (tracks[trackIndex]) {
+          tracks[trackIndex].enabled = true;
+          console.log(`✅ Trilha ${trackIndex} (${langCode}) ativada`);
+          
+          // Atualizar UI
+          const currentLangSpan = document.getElementById('current-audio-lang');
+          if (currentLangSpan) {
+            currentLangSpan.textContent = langCode;
+          }
+          
+          // Fechar dropdown
+          document.getElementById('audio-dropdown').classList.add('hidden');
+        }
+      }
+
+      // Método alternativo para detectar múltiplas trilhas
+      function checkAlternativeAudioMethod(videoElement) {
+        console.log('🔍 Método alternativo: verificando via MediaSource...');
+        
+        // Como sabemos que o arquivo tem 2 trilhas, criar controle manual
+        setTimeout(() => {
+          console.log('💡 Criando controle baseado em informações conhecidas...');
+          createManualAudioController();
+        }, 2000);
+      }
+
+      // Criar controle manual quando HTML5 não detecta as trilhas
+      function createManualAudioController() {
+        console.log('🎛️ Criando controle manual de áudio...');
+        
+        const controlButton = document.createElement('button');
+        controlButton.id = 'audio-track-control';
+        controlButton.className = 'absolute top-4 right-20 bg-purple-600/80 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition-all duration-200 flex items-center space-x-2 z-50';
+        controlButton.innerHTML = '<i class="fas fa-language"></i> <span id="manual-audio-lang">ENG</span>';
+        
+        // Menu dropdown
+        const dropdown = document.createElement('div');
+        dropdown.id = 'manual-audio-dropdown';
+        dropdown.className = 'absolute top-12 right-0 bg-gray-800 rounded-lg shadow-lg min-w-40 hidden z-50';
+        
+        // Opções de idioma
+        const languages = [
+          { code: 'ENG', name: 'Inglês', suffix: 'eng' },
+          { code: 'POR', name: 'Português', suffix: 'por' }
+        ];
+        
+        languages.forEach(lang => {
+          const option = document.createElement('button');
+          option.className = 'w-full text-left px-4 py-2 text-white hover:bg-gray-700 transition-colors';
+          option.innerHTML = `<i class="fas fa-volume-up mr-2"></i>${lang.name}`;
+          option.onclick = () => switchToLanguageSpecificFile(lang.code, lang.suffix);
+          dropdown.appendChild(option);
+        });
+        
+        controlButton.appendChild(dropdown);
+        
+        // Toggle dropdown
+        controlButton.onclick = (e) => {
+          e.stopPropagation();
+          dropdown.classList.toggle('hidden');
+        };
+        
+        // Fechar dropdown ao clicar fora
+        document.addEventListener('click', () => {
+          dropdown.classList.add('hidden');
+        });
+        
+        const playerContainer = player.el();
+        playerContainer.style.position = 'relative';
+        playerContainer.appendChild(controlButton);
+      }
+
+      // Trocar para arquivo específico do idioma
+      async function switchToLanguageSpecificFile(langCode, langSuffix) {
+        console.log(`🔄 Trocando para arquivo específico: ${langCode}`);
+        
+        const currentSrc = player.currentSrc();
+        const currentTime = player.currentTime();
+        const wasPlaying = !player.paused();
+        
+        // Construir URL do arquivo específico do idioma
+        const baseName = currentSrc.split('/').pop().replace('.mp4', '');
+        const languageSpecificUrl = currentSrc.replace('.mp4', `-${langSuffix}.mp4`);
+        
+        console.log(`📁 Arquivo atual: ${currentSrc}`);
+        console.log(`📁 Arquivo destino: ${languageSpecificUrl}`);
+        
+        try {
+          // Verificar se arquivo específico existe
+          const response = await fetch(languageSpecificUrl, { method: 'HEAD' });
+          
+          if (response.ok) {
+            console.log(`✅ Arquivo ${langCode} encontrado, trocando...`);
+            
+            // Pausar reprodução atual
+            player.pause();
+            
+            // Trocar fonte do vídeo
+            player.src({
+              src: languageSpecificUrl,
+              type: 'video/mp4'
+            });
+            
+            // Aguardar carregamento e restaurar posição
+            player.ready(() => {
+              player.currentTime(currentTime);
+              if (wasPlaying) {
+                player.play();
+              }
+              
+              // Atualizar UI
+              const langSpan = document.getElementById('manual-audio-lang');
+              if (langSpan) {
+                langSpan.textContent = langCode;
+              }
+              
+              console.log(`✅ Trocado para ${langCode} na posição ${currentTime}s`);
+            });
+            
+          } else {
+            console.log(`❌ Arquivo ${langCode} não encontrado`);
+            alert(`Arquivo de áudio em ${langCode === 'ENG' ? 'Inglês' : 'Português'} não está disponível ainda.\n\nO sistema está processando as versões específicas...`);
+          }
+          
+        } catch (error) {
+          console.error('❌ Erro ao trocar idioma:', error);
+          alert('Erro ao trocar idioma. Tente novamente em alguns instantes.');
+        }
+        
+        // Fechar dropdown
+        document.getElementById('manual-audio-dropdown').classList.add('hidden');
+      }
+    }
+
+    function setupEventListeners() {
+      // Chat
+      document.getElementById('send-message').addEventListener('click', sendMessage);
+      document.getElementById('chat-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          sendMessage();
+        }
+      });
+
+      // Sair da sala
+      document.getElementById('leave-room').addEventListener('click', () => {
+        if (confirm('Tem certeza que deseja sair da sala?')) {
+          window.location.href = '/';
+        }
+      });
+    }
+
+    // Criar fontes de vídeo com fallback
+    async function createVideoSources(videoSrc) {
+      const sources = [];
+      const filename = videoSrc.split('/').pop();
+      const baseName = filename.split('.')[0];
+      
+      // Verificar se existem versões convertidas
+      try {
+        const response = await fetch(`http://localhost:4000/api/videos`);
+        const videos = await response.json();
+        
+        // Procurar por versões convertidas do mesmo arquivo
+        const convertedVersions = videos.filter(v => v.name.includes(baseName));
+        
+        // Priorizar formatos mais compatíveis
+        const formatPriority = ['mp4', 'webm', 'ogg'];
+        
+        for (const format of formatPriority) {
+          const convertedFile = convertedVersions.find(v => v.url.endsWith(`.${format}`));
+          if (convertedFile) {
+            sources.push({
+              src: `http://localhost:4000${convertedFile.url}`,
+              type: getMimeType(`.${format}`)
+            });
+          }
+        }
+        
+        // Adicionar arquivo original como último recurso
+        sources.push({
+          src: `http://localhost:4000${videoSrc}`,
+          type: getMimeType(videoSrc)
+        });
+        
+      } catch (error) {
+        console.log('⚠️ Erro ao buscar versões convertidas, usando original:', error);
+        sources.push({
+          src: `http://localhost:4000${videoSrc}`,
+          type: getMimeType(videoSrc)
+        });
+      }
+      
+      return sources;
+    }
+
+    function getMimeType(filename) {
+      const extension = filename.split('.').pop().toLowerCase();
+      const mimeTypes = {
+        'mp4': 'video/mp4',
+        'webm': 'video/webm',
+        'ogg': 'video/ogg',
+        'avi': 'video/x-msvideo',
+        'mov': 'video/quicktime',
+        'wmv': 'video/x-ms-wmv',
+        'flv': 'video/x-flv',
+        'mkv': 'video/x-matroska'
+      };
+      return mimeTypes[extension] || 'video/mp4';
+    }
+
+    // Funções auxiliares
+    function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+      
+      if (message && socket) {
+        socket.emit('chat-message', {
+          roomId: roomId,
+          message: message
+        });
+        input.value = '';
+      }
+    }
+
+    function updateUsersList(users) {
+      const usersList = document.getElementById('users-list');
+      usersList.innerHTML = users.map(user => `
+        <div class="flex items-center space-x-2 text-sm">
+          <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+          <span class="text-gray-300">${user.username}</span>
+        </div>
+      `).join('');
+    }
+
+    function updateUserCount(count) {
+      document.getElementById('user-count').innerHTML = `
+        <i class="fas fa-users mr-2"></i>
+        <span>${count} usuário${count !== 1 ? 's' : ''}</span>
+      `;
+    }
+
+    function loadChatMessages(messages) {
+      const chatContainer = document.getElementById('chat-messages');
+      chatContainer.innerHTML = '';
+      messages.forEach(message => {
+        addChatMessage(message.username, message.message, 'user', false);
+      });
+    }
+
+    function addChatMessage(username, message, type, scroll = true) {
+      const chatContainer = document.getElementById('chat-messages');
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `animate-slide-up ${type === 'system' ? 'text-center' : ''}`;
+      
+      if (type === 'system') {
+        messageDiv.innerHTML = `
+          <span class="text-xs text-gray-500 italic">${message}</span>
+        `;
+      } else {
+        messageDiv.innerHTML = `
+          <div class="text-xs text-gray-400 mb-1">${username}</div>
+          <div class="text-sm text-white bg-gray-700 rounded-lg px-3 py-2">${message}</div>
+        `;
+      }
+      
+      chatContainer.appendChild(messageDiv);
+      
+      if (scroll) {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+    }
+
+    function showSyncStatus() {
+      document.getElementById('sync-status').classList.remove('hidden');
+    }
+
+    function hideSyncStatus() {
+      document.getElementById('sync-status').classList.add('hidden');
+    }
+
+    // Mostrar erro de compatibilidade com soluções
+    function showVideoCompatibilityError(videoSrc) {
+      const filename = videoSrc.split('/').pop();
+      const isUnsupportedFormat = filename.match(/\.(mkv|avi|wmv|flv)$/i);
+      
+      // Remover player com erro
+      if (player) {
+        player.dispose();
+        player = null;
+      }
+      
+      // Criar interface de erro com soluções
+      const videoContainer = document.querySelector('.relative.bg-black');
+      videoContainer.innerHTML = `
+        <div class="h-full flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg">
+          <div class="text-center p-8 max-w-md">
+            <div class="mb-6">
+              <i class="fas fa-exclamation-triangle text-6xl text-yellow-500 mb-4"></i>
+              <h3 class="text-xl font-bold text-white mb-2">Formato Não Suportado</h3>
+              <p class="text-gray-300 text-sm">
+                O navegador não consegue reproduzir arquivos ${isUnsupportedFormat ? isUnsupportedFormat[1].toUpperCase() : 'neste formato'}
+              </p>
+            </div>
+            
+            <div class="space-y-3">
+              <button onclick="requestVideoConversion('${filename}')" 
+                      class="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                <i class="fas fa-cogs mr-2"></i>Converter para MP4
+              </button>
+              
+              <button onclick="showCompatibilityInfo()" 
+                      class="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+                <i class="fas fa-info-circle mr-2"></i>Ver Formatos Suportados
+              </button>
+              
+              <button onclick="window.location.href='/'" 
+                      class="w-full px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors">
+                <i class="fas fa-arrow-left mr-2"></i>Voltar à Biblioteca
+              </button>
+            </div>
+            
+            <div class="mt-6 p-4 bg-blue-900 bg-opacity-30 rounded-lg border border-blue-500">
+              <p class="text-blue-200 text-xs">
+                <i class="fas fa-lightbulb mr-1"></i>
+                <strong>Dica:</strong> Arquivos MP4, WebM e OGG funcionam melhor em navegadores
+              </p>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    // Solicitar conversão do vídeo
+    window.requestVideoConversion = async function(filename) {
+      try {
+        const convertBtn = event.target;
+        convertBtn.disabled = true;
+        convertBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Convertendo...';
+        
+        const response = await fetch(`http://localhost:4000/api/convert/${filename}`, {
+          method: 'POST'
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          
+          // Mostrar sucesso e recarregar
+          showConversionSuccess();
+          
+          // Recarregar página após 3 segundos para usar versão convertida
+          setTimeout(() => {
+            window.location.reload();
+          }, 3000);
+          
+        } else {
+          throw new Error('Servidor não conseguiu converter o arquivo');
+        }
+        
+      } catch (error) {
+        console.error('❌ Erro na conversão:', error);
+        showConversionError(error.message);
+      }
+    }
+    
+    function showConversionSuccess() {
+      const videoContainer = document.querySelector('.relative.bg-black');
+      videoContainer.innerHTML = `
+        <div class="h-full flex items-center justify-center bg-gradient-to-br from-green-900 to-green-800 rounded-lg">
+          <div class="text-center p-8">
+            <i class="fas fa-check-circle text-6xl text-green-400 mb-4"></i>
+            <h3 class="text-xl font-bold text-white mb-2">Conversão Concluída!</h3>
+            <p class="text-green-200">Recarregando com versão compatível...</p>
+            <div class="mt-4">
+              <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-400 mx-auto"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+         function showConversionError(message) {
+       const videoContainer = document.querySelector('.relative.bg-black');
+       videoContainer.innerHTML = `
+         <div class="h-full flex items-center justify-center bg-gradient-to-br from-red-900 to-red-800 rounded-lg">
+           <div class="text-center p-8 max-w-lg">
+             <i class="fas fa-tools text-6xl text-orange-400 mb-4"></i>
+             <h3 class="text-xl font-bold text-white mb-2">FFmpeg Não Configurado</h3>
+             <p class="text-orange-200 text-sm mb-6">${message}</p>
+             
+             <div class="bg-gray-900 bg-opacity-50 rounded-lg p-4 mb-6 text-left">
+               <h4 class="text-white font-semibold mb-2">📋 Conversão Manual:</h4>
+               <div class="bg-black bg-opacity-50 rounded px-3 py-2 mb-3">
+                 <code class="text-green-400 text-xs">
+                   ffmpeg -i "arquivo.mkv" -c:v libx264 -c:a aac "arquivo.mp4"
+                 </code>
+               </div>
+               <p class="text-gray-300 text-xs">
+                 💡 Execute no terminal e coloque o arquivo .mp4 na pasta /public/videos/
+               </p>
+             </div>
+             
+             <div class="space-y-2">
+               <button onclick="copyConversionCommand()" 
+                       class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                 <i class="fas fa-copy mr-2"></i>Copiar Comando FFmpeg
+               </button>
+               
+               <button onclick="window.location.href='/'" 
+                       class="w-full px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors">
+                 <i class="fas fa-arrow-left mr-2"></i>Voltar à Biblioteca
+               </button>
+             </div>
+           </div>
+         </div>
+       `;
+     }
+     
+     window.copyConversionCommand = function() {
+       const filename = window.location.search.split('video=')[1] || 'arquivo.mkv';
+       const mp4name = filename.replace(/\.[^/.]+$/, '.mp4');
+       const command = `ffmpeg -i "${filename}" -c:v libx264 -c:a aac "${mp4name}"`;
+       
+       navigator.clipboard.writeText(command).then(() => {
+         alert('✅ Comando copiado! Cole no terminal para converter o vídeo.');
+       }).catch(() => {
+         prompt('📋 Comando para conversão (Ctrl+C para copiar):', command);
+       });
+     }
+    
+    window.showCompatibilityInfo = function() {
+      alert(`🎬 Formatos de Vídeo Suportados pelos Navegadores:
+      
+✅ SUPORTADOS:
+• MP4 (H.264 + AAC) - Recomendado
+• WebM (VP8/VP9 + Opus)
+• OGG (Theora + Vorbis)
+
+❌ PROBLEMÁTICOS:
+• MKV - Suporte limitado
+• AVI - Não suportado nativamente  
+• WMV - Apenas Internet Explorer
+• FLV - Descontinuado
+
+💡 SOLUÇÃO:
+Use o botão "Converter para MP4" para criar uma versão compatível do seu vídeo.`);
+    }
+
+    // Cleanup ao sair da página
+    window.addEventListener('beforeunload', () => {
+      if (socket) {
+        socket.disconnect();
+      }
+      if (player) {
+        player.dispose();
+      }
+    });
+
+    // Aguardar carregamento da página e das dependências
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', startApp);
+    } else {
+      startApp();
+    }
+  </script>
+</Layout> 

@@ -1,0 +1,160 @@
+---
+export interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content="Friend Cine - Assista filmes em conjunto com seus amigos" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    
+    <!-- Video.js CSS -->
+    <link href="https://vjs.zencdn.net/8.6.1/video-js.css" rel="stylesheet">
+    
+    <!-- Font Awesome para ícones -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+        min-height: 100vh;
+      }
+
+      .glass-effect {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .video-js {
+        width: 100%;
+        height: 100%;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .vjs-control-bar {
+        background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.7) 100%);
+      }
+
+      .chat-container {
+        max-height: 400px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255,255,255,0.3) transparent;
+      }
+
+      .chat-container::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .chat-container::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .chat-container::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.3);
+        border-radius: 3px;
+      }
+
+      /* Animações para biblioteca de vídeos */
+      .video-card {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .video-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+      }
+
+      .video-actions {
+        transition: all 0.3s ease;
+      }
+
+      .delete-btn {
+        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+
+      .video-card:hover .delete-btn {
+        animation: slideInBounce 0.4s ease-out;
+      }
+
+      @keyframes slideInBounce {
+        0% {
+          opacity: 0;
+          transform: translateX(20px) scale(0.8);
+        }
+        60% {
+          opacity: 1;
+          transform: translateX(-2px) scale(1.05);
+        }
+        100% {
+          opacity: 1;
+          transform: translateX(0) scale(1);
+        }
+      }
+
+      .convert-btn, .create-btn {
+        transition: all 0.2s ease;
+      }
+
+      .video-card:hover .convert-btn,
+      .video-card:hover .create-btn {
+        animation: pulseGlow 0.5s ease-out;
+      }
+
+      @keyframes pulseGlow {
+        0% {
+          box-shadow: 0 0 0 0 rgba(147, 51, 234, 0.7);
+        }
+        70% {
+          box-shadow: 0 0 0 10px rgba(147, 51, 234, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(147, 51, 234, 0);
+        }
+      }
+
+
+    </style>
+  </head>
+  <body>
+    <nav class="glass-effect p-4 mb-6">
+      <div class="container mx-auto flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <i class="fas fa-film text-3xl text-purple-400"></i>
+          <h1 class="text-2xl font-bold text-white">Friend Cine</h1>
+        </div>
+        <div class="text-sm text-gray-300">
+          Assista filmes em conjunto com seus amigos
+        </div>
+      </div>
+    </nav>
+
+    <main class="container mx-auto px-4 pb-8">
+      <slot />
+    </main>
+
+    <!-- Socket.io - Carregado primeiro -->
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    
+    <!-- Video.js -->
+    <script src="https://vjs.zencdn.net/8.6.1/video.min.js"></script>
+    
+    <!-- Script de verificação -->
+    <script>
+      // @ts-nocheck
+      console.log('📦 Scripts externos carregados');
+      console.log('- Socket.io:', typeof io !== 'undefined' ? '✅' : '❌');
+      console.log('- Video.js:', typeof videojs !== 'undefined' ? '✅' : '❌');
+    </script>
+  </body>
+</html> 

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Compatibilidade de Codecs</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px;
+            background: #1a1a2e;
+            color: white;
+        }
+        .codec-test { 
+            margin: 10px 0; 
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+        }
+        .supported { color: #4CAF50; }
+        .not-supported { color: #f44336; }
+        .maybe { color: #FF9800; }
+        video { 
+            width: 100%; 
+            max-width: 600px; 
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .info { 
+            background: rgba(0,123,255,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎬 Teste de Compatibilidade de Codecs - Friend Cine</h1>
+    
+    <div class="info">
+        <h3>ℹ️ Sobre este teste</h3>
+        <p>Esta página verifica quais formatos de vídeo e áudio seu navegador pode reproduzir.</p>
+    </div>
+
+    <h2>📹 Compatibilidade de Formatos de Vídeo</h2>
+    <div id="video-support"></div>
+
+    <h2>🔊 Compatibilidade de Codecs de Áudio</h2>
+    <div id="audio-support"></div>
+
+    <h2>🎥 Teste do Arquivo Atual</h2>
+    <p>Testando o arquivo: <strong>1750926556346-Midnight.Gospel.S01E01.720p.NF.WEB-DL.DD5.1.x264-DUAL.COMANDO.TO.mkv</strong></p>
+    <video id="test-video" controls>
+        <source src="/videos/1750926556346-Midnight.Gospel.S01E01.720p.NF.WEB-DL.DD5.1.x264-DUAL.COMANDO.TO.mkv" type="video/x-matroska">
+        Seu navegador não suporta o elemento video.
+    </video>
+    
+    <div id="video-info"></div>
+
+    <script>
+        // Criar elemento de vídeo para testes
+        const video = document.createElement('video');
+        
+        // Testes de formato de vídeo
+        const videoFormats = [
+            { format: 'video/mp4; codecs="avc1.42E01E"', name: 'MP4 H.264' },
+            { format: 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"', name: 'MP4 H.264 + AAC' },
+            { format: 'video/webm; codecs="vp8"', name: 'WebM VP8' },
+            { format: 'video/webm; codecs="vp9"', name: 'WebM VP9' },
+            { format: 'video/ogg; codecs="theora"', name: 'Ogg Theora' },
+            { format: 'video/x-matroska; codecs="avc1.42E01E"', name: 'MKV H.264' },
+            { format: 'video/x-matroska', name: 'MKV (genérico)' },
+        ];
+
+        // Testes de codec de áudio
+        const audioFormats = [
+            { format: 'audio/mpeg', name: 'MP3' },
+            { format: 'audio/mp4; codecs="mp4a.40.2"', name: 'AAC' },
+            { format: 'audio/ogg; codecs="vorbis"', name: 'Ogg Vorbis' },
+            { format: 'audio/webm; codecs="opus"', name: 'WebM Opus' },
+            { format: 'audio/wav; codecs="1"', name: 'WAV' },
+            { format: 'audio/x-ac3', name: 'AC3 (Dolby Digital)' },
+            { format: 'audio/ac3', name: 'AC3 Alternative' },
+        ];
+
+        function getSupportLevel(support) {
+            switch(support) {
+                case 'probably': return { class: 'supported', text: '✅ Totalmente suportado' };
+                case 'maybe': return { class: 'maybe', text: '⚠️ Talvez suportado' };
+                default: return { class: 'not-supported', text: '❌ Não suportado' };
+            }
+        }
+
+        // Testar suporte a formatos de vídeo
+        const videoSupportDiv = document.getElementById('video-support');
+        videoFormats.forEach(format => {
+            const support = video.canPlayType(format.format);
+            const level = getSupportLevel(support);
+            videoSupportDiv.innerHTML += `
+                <div class="codec-test">
+                    <strong>${format.name}</strong>: 
+                    <span class="${level.class}">${level.text}</span>
+                    <br><small>Codec: ${format.format}</small>
+                </div>
+            `;
+        });
+
+        // Testar suporte a codecs de áudio
+        const audioSupportDiv = document.getElementById('audio-support');
+        const audio = document.createElement('audio');
+        audioFormats.forEach(format => {
+            const support = audio.canPlayType(format.format);
+            const level = getSupportLevel(support);
+            audioSupportDiv.innerHTML += `
+                <div class="codec-test">
+                    <strong>${format.name}</strong>: 
+                    <span class="${level.class}">${level.text}</span>
+                    <br><small>Codec: ${format.format}</small>
+                </div>
+            `;
+        });
+
+        // Monitorar o vídeo de teste
+        const testVideo = document.getElementById('test-video');
+        const videoInfoDiv = document.getElementById('video-info');
+
+        testVideo.addEventListener('loadedmetadata', () => {
+            console.log('🎬 Vídeo carregado!');
+            const info = `
+                <div class="info">
+                    <h3>📊 Informações do Vídeo</h3>
+                    <p><strong>Duração:</strong> ${testVideo.duration.toFixed(2)} segundos</p>
+                    <p><strong>Largura:</strong> ${testVideo.videoWidth}px</p>
+                    <p><strong>Altura:</strong> ${testVideo.videoHeight}px</p>
+                    <p><strong>Tem áudio:</strong> ${testVideo.audioTracks ? testVideo.audioTracks.length : 'N/A'} faixas</p>
+                    <p><strong>Volume:</strong> ${testVideo.volume}</p>
+                    <p><strong>Mutado:</strong> ${testVideo.muted ? 'Sim' : 'Não'}</p>
+                </div>
+            `;
+            videoInfoDiv.innerHTML = info;
+        });
+
+        testVideo.addEventListener('error', (e) => {
+            console.error('❌ Erro ao carregar vídeo:', e);
+            videoInfoDiv.innerHTML = `
+                <div class="codec-test not-supported">
+                    <h3>❌ Erro ao Carregar Vídeo</h3>
+                    <p>O navegador não conseguiu carregar o arquivo MKV.</p>
+                    <p><strong>Erro:</strong> ${testVideo.error ? testVideo.error.message : 'Desconhecido'}</p>
+                    <p><strong>Código:</strong> ${testVideo.error ? testVideo.error.code : 'N/A'}</p>
+                </div>
+            `;
+        });
+
+        testVideo.addEventListener('canplay', () => {
+            console.log('✅ Vídeo pronto para reprodução');
+            // Verificar faixas de áudio
+            if (testVideo.audioTracks) {
+                console.log('🎵 Faixas de áudio:', testVideo.audioTracks.length);
+                for (let i = 0; i < testVideo.audioTracks.length; i++) {
+                    console.log(`  Faixa ${i}:`, testVideo.audioTracks[i]);
+                }
+            }
+        });
+
+        // Log de informações do navegador
+        console.log('🌐 Informações do Navegador:');
+        console.log('User Agent:', navigator.userAgent);
+        console.log('Plataforma:', navigator.platform);
+    </script>
+</body>
+</html> 
