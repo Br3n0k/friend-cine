@@ -1,0 +1,101 @@
+---
+export interface Props {
+  room: {
+    id: string;
+    videoFile: string;
+    userCount: number;
+    isPlaying: boolean;
+    currentTime: number;
+    lastUpdate: number;
+  };
+}
+
+const { room } = Astro.props;
+
+// Formatar tempo de vídeo
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Calcular tempo desde última atualização
+function getLastUpdateText(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  
+  if (minutes < 1) return 'agora mesmo';
+  if (minutes === 1) return '1 minuto atrás';
+  return `${minutes} minutos atrás`;
+}
+
+const formattedTime = formatTime(room.currentTime);
+const lastUpdateText = getLastUpdateText(room.lastUpdate);
+const videoName = room.videoFile.replace(/\.[^/.]+$/, ""); // Remove extensão
+---
+
+<div class="room-card glass-effect rounded-lg p-4 hover:bg-white/20 transition-all cursor-pointer"
+     data-room-id={room.id}>
+  <div class="flex items-start justify-between mb-3">
+    <div class="flex-1 min-w-0">
+      <h3 class="font-medium text-white truncate mb-1" title={room.id}>
+        {room.id}
+      </h3>
+      <p class="text-sm text-gray-400 truncate" title={videoName}>
+        {videoName}
+      </p>
+    </div>
+    
+    <div class="flex items-center space-x-2 ml-2">
+      <span class={`w-2 h-2 rounded-full ${room.isPlaying ? 'bg-green-400' : 'bg-gray-400'}`}>
+      </span>
+      <span class="text-sm text-gray-300">
+        {room.isPlaying ? 'Reproduzindo' : 'Pausado'}
+      </span>
+    </div>
+  </div>
+
+  <div class="flex items-center justify-between text-sm text-gray-400 mb-3">
+    <div class="flex items-center space-x-4">
+      <span class="flex items-center">
+        <i class="fas fa-users mr-1"></i>
+        {room.userCount} {room.userCount === 1 ? 'usuário' : 'usuários'}
+      </span>
+      <span class="flex items-center">
+        <i class="fas fa-clock mr-1"></i>
+        {formattedTime}
+      </span>
+    </div>
+    <span class="text-xs">
+      {lastUpdateText}
+    </span>
+  </div>
+
+  <button class="join-room-btn w-full px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-sm font-medium">
+    <i class="fas fa-sign-in-alt mr-2"></i>
+    Entrar na Sala
+  </button>
+</div>
+
+<style>
+  .room-card {
+    transition: all 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .room-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(147, 51, 234, 0.2);
+    border-color: rgba(147, 51, 234, 0.3);
+  }
+
+  .join-room-btn {
+    transition: all 0.2s ease;
+  }
+
+  .room-card:hover .join-room-btn {
+    background-color: rgb(126, 34, 206);
+    transform: translateY(-1px);
+  }
+</style> 

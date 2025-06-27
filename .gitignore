@@ -1,37 +1,118 @@
-# build output
-dist/
-.output/
-
-# generated types
-.astro/
-
-# dependencies
+# Dependencies
 node_modules/
-
-# logs
-logs/
-*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+package-lock.json
 
-# environment variables
+# Environment Variables
 .env
-.env.production
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
-.pnpm-env
 
-# macOS-specific files
-.DS_Store
+# Build outputs
+dist/
+.astro/
+.output/
+.vercel/
+.netlify/
 
-# Videos (but keep the folder)
-public/videos/*
-!public/videos/.gitkeep
+# Logs
+logs/
+*.log
 
-# jetbrains setting folder
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+
+# next.js build output
+.next
+
+# nuxt.js build output
+.nuxt
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless
+
+# IDE and Editor files
+.vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Upload directories (opcional - descomente se não quiser versionar vídeos)
+# public/videos/*
+# !public/videos/.gitkeep
+# public/subtitles/*
+# !public/subtitles/.gitkeep
+
+# Temporary files
+*.tmp
+*.temp
+
+# FFmpeg binaries (se instalados localmente)
+ffmpeg/
+ffmpeg.exe
+ffprobe.exe
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose.yml
+
+# Temporary conversion files
+public/videos/converted/*.converting
+
+# Test files
+test-videos/
+*.test.mp4
+
+# Backup files
+*.bak
+*.backup
+
+# TypeScript
+*.tsbuildinfo

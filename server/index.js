@@ -6,16 +6,49 @@ import fs from 'fs-extra';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+import helmet from 'helmet';
+
+// Importar módulos personalizados
 import { VideoConverter } from './video-converter.js';
+import {
+  uploadRateLimit,
+  apiRateLimit,
+  corsMiddleware,
+  sanitizeInput,
+  validateFileMiddleware,
+  securityLogger,
+  securityHeaders,
+  validateSocketData,
+  chatRateLimiter
+} from './middleware/security.js';
+import logger, {
+  logRequest,
+  logSocketEvent,
+  logUpload,
+  logRoomActivity,
+  logChatMessage,
+  logError
+} from '../src/utils/logger.js';
+
+// Carregar variáveis de ambiente
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = createServer(app);
+
+// Configuração do CORS baseada em variáveis de ambiente
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+  "http://localhost:3000", 
+  "http://127.0.0.1:3000"
+];
+
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -31,20 +64,32 @@ const videosDir = path.join(__dirname, '../public/videos');
 const videoConverter = new VideoConverter(videosDir);
 
 // Configuração do multer para upload de vídeos
+// Configuração melhorada do multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../public/videos');
+    const uploadDir = process.env.UPLOAD_PATH || path.join(__dirname, '../public/videos');
     fs.ensureDirSync(uploadDir);
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}-${file.originalname}`;
+    // Gerar nome seguro do arquivo
+    const safeName = file.originalname
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remover acentos
+      .replace(/[^a-zA-Z0-9.-]/g, '_') // Apenas caracteres seguros
+      .toLowerCase();
+    
+    const uniqueName = `${Date.now()}_${safeName}`;
     cb(null, uniqueName);
   }
 });
 
 const upload = multer({ 
   storage,
+  limits: {
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 2 * 1024 * 1024 * 1024, // 2GB padrão
+    files: 1
+  },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv)$/i;
     if (allowedTypes.test(file.originalname)) {
@@ -55,22 +100,15 @@ const upload = multer({
   }
 });
 
-// Middleware
-app.use(express.json());
-
-// CORS middleware
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
-});
+// Middleware de segurança
+app.set('trust proxy', 1); // Para rate limiting atrás de proxy
+app.use(helmet()); // Headers de segurança
+app.use(securityHeaders); // Headers customizados
+app.use(securityLogger); // Log de segurança
+app.use(logRequest); // Log de requisições
+app.use(express.json({ limit: '10mb' })); // Limite para JSON
+app.use(sanitizeInput); // Sanitização de entrada
+app.use(corsMiddleware(allowedOrigins)); // CORS configurável
 
 // Servir arquivos estáticos com headers MIME corretos para vídeos
 app.use('/videos', (req, res, next) => {
@@ -159,14 +197,27 @@ class CinemaRoom {
   }
 }
 
-// Rota de teste
+// Middleware de rate limiting para rotas específicas
+app.use('/api/upload', uploadRateLimit);
+app.use('/api', apiRateLimit);
+
+// Rota de health check melhorada
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  const healthInfo = {
+    status: 'OK',
     message: 'Friend Cine Server funcionando!',
     timestamp: new Date().toISOString(),
-    cors: 'Configurado para localhost:3000'
-  });
+    version: '1.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    uptime: Math.floor(process.uptime()),
+    memory: {
+      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024)
+    }
+  };
+
+  logger.info('Health check accessed', { ip: req.ip });
+  res.json(healthInfo);
 });
 
 // Rotas da API

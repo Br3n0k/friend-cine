@@ -1,7 +1,19 @@
 {
   "name": "friend-cine",
   "type": "module",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "description": "Plataforma colaborativa para assistir filmes em conjunto online",
+  "keywords": ["cinema", "streaming", "colaborativo", "socket.io", "astro"],
+  "author": "Friend Cine Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Br3n0k/friend-cine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Br3n0k/friend-cine/issues"
+  },
+  "homepage": "https://github.com/Br3n0k/friend-cine#readme",
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
@@ -15,7 +27,11 @@
     "check-ffmpeg": "node install-ffmpeg.js --check",
     "install-ffmpeg": "node install-ffmpeg.js",
     "test-system": "node test-system.js",
-    "restart": "npm run dev:all"
+    "restart": "npm run dev:all",
+    "lint": "astro check",
+    "clean": "rm -rf dist .astro node_modules/.astro",
+    "docker:build": "docker build -t friend-cine .",
+    "docker:run": "docker run -p 3000:3000 -p 4000:4000 friend-cine"
   },
   "dependencies": {
     "@astrojs/node": "^9.2.2",
@@ -25,9 +41,12 @@
     "@videojs/http-streaming": "^3.17.0",
     "astro": "^5.10.1",
     "concurrently": "^9.2.0",
+    "dotenv": "^16.4.5",
     "express": "^5.1.0",
+    "express-rate-limit": "^7.4.1",
     "fluent-ffmpeg": "^2.1.3",
     "fs-extra": "^11.3.0",
+    "helmet": "^8.0.0",
     "hls-server": "^1.5.0",
     "multer": "^2.0.1",
     "nodemon": "^3.1.10",
@@ -35,6 +54,17 @@
     "socket.io-client": "^4.8.1",
     "tailwindcss": "^3.4.17",
     "uuid": "^11.1.0",
-    "video.js": "^8.23.3"
+    "video.js": "^8.23.3",
+    "winston": "^3.16.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^20.17.9",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
   }
 }

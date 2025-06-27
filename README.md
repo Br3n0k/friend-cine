@@ -1,279 +1,230 @@
 # 🎬 Friend Cine
 
-Uma plataforma colaborativa para assistir filmes em conjunto online, construída com Astro e usando storage baseado em arquivos.
+Uma plataforma colaborativa moderna para assistir filmes em conjunto online, construída com **Astro**, **Express.js** e **Socket.io**.
 
-## 🚀 INÍCIO RÁPIDO
+[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Br3n0k/friend-cine/blob/main/LICENSE)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
+[![GitHub issues](https://img.shields.io/github/issues/Br3n0k/friend-cine.svg)](https://github.com/Br3n0k/friend-cine/issues)
 
-### ⚡ Método Mais Fácil
+## ✨ Principais Funcionalidades
+
+- 🎥 **Player Avançado** - Video.js com suporte a múltiplas faixas de áudio e legendas
+- 🔄 **Sincronização em Tempo Real** - Assistir junto com amigos usando WebSockets
+- 💬 **Chat Integrado** - Conversas durante o filme
+- 📁 **Upload Inteligente** - Conversão automática com FFmpeg
+- 🏠 **Salas Dinâmicas** - Criar e gerenciar salas privadas
+- 🔒 **Segurança Robusta** - Rate limiting, validação e sanitização
+- 📱 **Design Responsivo** - Interface moderna com Tailwind CSS
+
+## 🚀 Início Rápido
+
+### Método Automático
 
 **Windows:**
 ```bash
-# Duplo clique no arquivo:
 start.bat
 ```
 
 **Linux/Mac:**
 ```bash
-./start.sh
+chmod +x start.sh && ./start.sh
 ```
 
-### 🛠️ Método Manual
+### Método Manual
 
-1. **Instale as dependências:**
+1. **Clone o repositório:**
+```bash
+git clone https://github.com/Br3n0k/friend-cine.git
+cd friend-cine
+```
+
+2. **Instale as dependências:**
 ```bash
 npm install
 ```
 
-2. **Execute ambos os servidores:**
+3. **Configure as variáveis de ambiente:**
 ```bash
-# Opção 1: Executar tudo junto
-npm run dev:all
-
-# Opção 2: Dois terminais separados
-# Terminal 1:
-npm run dev:server
-
-# Terminal 2: 
-npm run dev
+cp .env.example .env
+# Edite o arquivo .env conforme necessário
 ```
 
-3. **Acesse a aplicação:**
+4. **Execute a aplicação:**
+```bash
+npm run dev:all
+```
+
+5. **Acesse:**
    - **Frontend:** http://localhost:3000
    - **Backend API:** http://localhost:4000
 
-### ✅ Verificação
-
-Se tudo estiver funcionando, você verá:
-- `🎬 Friend Cine Server rodando na porta 4000`
-- `🚀 astro v5.10.1 started in dev mode`
-
-## ✨ Funcionalidades
-
-### 🎥 Player Avançado
-- **Video.js** como player principal com controles completos
-- Suporte a múltiplas faixas de áudio
-- Suporte a legendas (SRT, VTT)
-- Controles de velocidade de reprodução
-- Atalhos de teclado
-- Design responsivo
-
-### 🔄 Sincronização em Tempo Real
-- Todos os usuários assistem sincronizados
-- Controles compartilhados (play, pause, seek)
-- Indicador visual de sincronização
-- WebSocket para comunicação instantânea
-
-### 💬 Chat Integrado
-- Chat ao vivo durante o filme
-- Notificações de entrada/saída de usuários
-- Histórico de mensagens por sala
-- Interface intuitiva
-
-### 📁 Gerenciamento de Arquivos
-- Upload de vídeos via drag & drop
-- Suporte a múltiplos formatos (MP4, WebM, AVI, MOV, etc.)
-- Storage baseado em sistema de arquivos (sem banco de dados)
-- Lista automática de vídeos disponíveis
-
-### 🏠 Sistema de Salas
-- Criação dinâmica de salas
-- Salas privadas com nomes personalizados
-- Lista de salas ativas
-- Contagem de usuários em tempo real
-
-## 📁 Como Usar
-
-### 1. **Upload de Vídeos:**
-- Arraste um arquivo de vídeo para a área de upload
-- Ou clique para selecionar arquivo
-- Aguarde o upload ser concluído
-
-### 2. **Criar uma Sala:**
-- Clique em "Criar Sala" no vídeo desejado
-- Digite um nome para a sala
-- Digite seu nome de usuário
-- Clique em "Criar Sala"
-
-### 3. **Entrar em uma Sala:**
-- Clique em uma sala ativa na lista
-- Digite seu nome quando solicitado
-- Comece a assistir sincronizado com outros usuários
-
-### 4. **Controles Durante o Filme:**
-- **Espaço**: Play/Pause
-- **Setas esquerda/direita**: Voltar/avançar 5s
-- **Setas cima/baixo**: Volume
-- **M**: Mute/unmute
-- **F**: Tela cheia
-
-### 5. **Faixas de Áudio e Legendas:**
-- Botões aparecem automaticamente se disponíveis
-- Clique nos botões no canto inferior esquerdo
-- Selecione a faixa desejada no menu
-
-## 🛠️ Tecnologias Utilizadas
+## 🛠️ Tecnologias
 
 ### Frontend
-- **Astro** - Framework principal
-- **Tailwind CSS** - Estilização
-- **Video.js** - Player de vídeo
+- **Astro** - Framework moderno
+- **Tailwind CSS** - Estilização utilitária
+- **Video.js** - Player de vídeo robusto
 - **Socket.io Client** - Comunicação em tempo real
-- **Font Awesome** - Ícones
 
 ### Backend
 - **Express.js** - Servidor web
 - **Socket.io** - WebSockets
 - **Multer** - Upload de arquivos
-- **fs-extra** - Manipulação de arquivos
-- **UUID** - Geração de IDs únicos
+- **FFmpeg** - Processamento de vídeo
+- **Winston** - Sistema de logs
 
-## 📂 Estrutura do Projeto
+### Segurança
+- **express-rate-limit** - Rate limiting
+- **Helmet** - Headers de segurança
+- **Validação personalizada** - Sanitização de dados
+
+## 📁 Estrutura do Projeto
 
 ```
 friend-cine/
 ├── src/
-│   ├── layouts/
-│   │   └── Layout.astro          # Layout principal
-│   └── pages/
-│       ├── index.astro           # Página inicial
-│       └── room.astro            # Sala de cinema
+│   ├── components/          # Componentes reutilizáveis
+│   ├── layouts/            # Layouts Astro
+│   ├── pages/              # Páginas da aplicação
+│   └── utils/              # Utilitários e helpers
 ├── server/
-│   └── index.js                  # Servidor Express + Socket.io
+│   ├── middleware/         # Middleware de segurança
+│   ├── index.js           # Servidor principal
+│   └── video-converter.js # Processamento de vídeo
 ├── public/
-│   ├── videos/                   # Pasta de vídeos
-│   ├── subtitles/                # Pasta de legendas
-│   └── favicon.svg               # Favicon
-├── package.json
-├── astro.config.mjs
-└── README.md
+│   ├── videos/            # Pasta de vídeos
+│   └── subtitles/         # Pasta de legendas
+└── logs/                  # Logs da aplicação
 ```
 
-## 🎯 Funcionalidades Avançadas
+## 🎯 Como Usar
 
-### Formatos Suportados
-- **Vídeo**: MP4, WebM, OGG, AVI, MOV, WMV, FLV, MKV
-- **Legendas**: SRT, VTT (colocar na pasta `public/subtitles/`)
+### 1. Upload de Vídeos
+- Arraste arquivos para a área de upload
+- Conversão automática para formatos web
+- Suporte: MP4, WebM, AVI, MOV, MKV, WMV, FLV
 
-### Sincronização Inteligente
-- Detecção automática de dessincronia
-- Correção automática de atraso
-- Indicador visual durante sincronização
+### 2. Criar uma Sala
+- Selecione um vídeo
+- Digite nome da sala e seu usuário
+- Compartilhe o link com amigos
 
-### Chat Rico
-- Mensagens do sistema (entrada/saída)
-- Histórico de até 100 mensagens por sala
-- Auto-scroll para novas mensagens
-- Interface responsiva
+### 3. Assistir Juntos
+- Controles sincronizados automaticamente
+- Chat em tempo real
+- Múltiplas faixas de áudio e legendas
 
-### Gerenciamento de Salas
-- Salas são criadas dinamicamente
-- Removidas automaticamente quando vazias
-- Estado persistente durante a sessão
-- Suporte a múltiplas salas simultâneas
-
-## 🔧 Configuração Avançada
+## ⚙️ Configuração Avançada
 
 ### Variáveis de Ambiente
+
+Copie `.env.example` para `.env` e configure:
+
 ```bash
-PORT=4000  # Porta do servidor backend
+# Servidor
+PORT=4000
+NODE_ENV=development
+
+# URLs
+FRONTEND_URL=http://localhost:3000
+BACKEND_URL=http://localhost:4000
+
+# Upload
+MAX_FILE_SIZE=2147483648
+UPLOAD_PATH=./public/videos
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
 ```
 
-### Upload Limits
-- Tamanho máximo: 2GB por arquivo
-- Tipos permitidos: Configurável em `server/index.js`
+### FFmpeg (Conversão de Vídeo)
 
-### Storage
-- Vídeos: `public/videos/`
-- Legendas: `public/subtitles/`
-- Sem banco de dados necessário
+**Instalação automática:**
+```bash
+npm run install-ffmpeg
+```
+
+**Verificar instalação:**
+```bash
+npm run check-ffmpeg
+```
+
+## 🐳 Docker
+
+```bash
+# Build
+docker build -t friend-cine .
+
+# Run
+docker run -p 3000:3000 -p 4000:4000 friend-cine
+```
+
+## 📝 Scripts Disponíveis
+
+| Comando | Descrição |
+|---------|-----------|
+| `npm run dev:all` | Inicia frontend + backend |
+| `npm run dev` | Apenas frontend (Astro) |
+| `npm run dev:server` | Apenas backend |
+| `npm run build` | Build de produção |
+| `npm run test-system` | Teste do sistema |
+| `npm run install-ffmpeg` | Instalar FFmpeg |
+
+## 🔒 Segurança
+
+- ✅ Rate limiting para uploads e API
+- ✅ Validação e sanitização de entrada
+- ✅ Headers de segurança (CSP, HSTS, etc.)
+- ✅ Proteção contra XSS e injeção
+- ✅ Logs de segurança estruturados
 
 ## 🚨 Resolução de Problemas
 
 ### Vídeo não carrega
-- Verifique se o arquivo está na pasta `public/videos/`
+- Verifique se o arquivo está em `public/videos/`
 - Confirme que o formato é suportado
-- Verifique o console do navegador para erros
+- Verifique logs em `logs/error.log`
 
-### Sincronização com problemas
-- Verifique a conexão WebSocket (console do navegador)
-- Recarregue a página se necessário
-- Verifique se o servidor backend está rodando
+### Problemas de sincronização
+- Verifique conexão WebSocket no console
+- Recarregue a página
+- Verifique se o backend está rodando
 
 ### Upload falhando
-- Verifique o tamanho do arquivo (máx 2GB)
-- Confirme que o formato é suportado
-- Verifique permissões da pasta `public/videos/`
+- Verifique tamanho do arquivo (máx 2GB)
+- Confirme formato suportado
+- Verifique permissões da pasta
 
-## 📝 Scripts Disponíveis
+## 🤝 Contribuindo
 
-```bash
-npm run dev          # Desenvolvi...nto (Astro)
-npm run server       # Servidor backend
-npm run dev:server   # Servidor backend com auto-reload
-npm run build        # Build de produção
-npm run preview      # Preview do build
-```
+1. Fork o projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
 
-## 🌟 Próximas Funcionalidades
+## 📄 Licença
+
+Este projeto está licenciado sob a MIT License - veja o arquivo [LICENSE](LICENSE) para detalhes.
+
+## 🌟 Roadmap
 
 - [ ] Autenticação de usuários
 - [ ] Salas privadas com senha
 - [ ] Playlist de vídeos
-- [ ] Gravação de sessões
-- [ ] Integração com streaming services
-- [ ] Chat por voz
+- [ ] API REST documentada
 - [ ] Temas personalizáveis
+- [ ] Integração com serviços de streaming
+- [ ] Chat por voz
+- [ ] Mobile app
 
-## 📄 Licença
+## 📞 Suporte
 
-MIT License - veja o arquivo LICENSE para detalhes.
+- 📧 Email: [Issues](https://github.com/Br3n0k/friend-cine/issues)
+- 📝 Documentação: [Wiki](https://github.com/Br3n0k/friend-cine/wiki)
+- 🐛 Bug reports: [Issues](https://github.com/Br3n0k/friend-cine/issues/new)
 
 ---
 
-**Desenvolvido com ❤️ para assistir filmes com amigos!**
-
-```sh
-npm create astro@latest -- --template minimal
-```
-
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/withastro/astro/tree/latest/examples/minimal)
-[![Open with CodeSandbox](https://assets.codesandbox.io/github/button-edit-lime.svg)](https://codesandbox.io/p/sandbox/github/withastro/astro/tree/latest/examples/minimal)
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/withastro/astro?devcontainer_path=.devcontainer/minimal/devcontainer.json)
-
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
-
-## 🚀 Project Structure
-
-Inside of your Astro project, you'll see the following folders and files:
-
-```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
-```
-
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
-
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
-
-Any static assets, like images, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+**Desenvolvido com ❤️ por [Br3n0k](https://github.com/Br3n0k) para assistir filmes com amigos!**
