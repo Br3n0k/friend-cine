@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import crypto from 'crypto';
 import { UPLOAD_CONFIG } from '../../src/utils/constants.js';
-import { logger, logFileOperation } from '../../src/utils/logger.js';
+import logger, { logFileOperation } from '../../src/utils/logger.js';
 import { validateVideoFile } from '../../src/utils/validation.js';
 
 /**

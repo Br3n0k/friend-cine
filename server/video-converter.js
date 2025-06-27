@@ -2,7 +2,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import path from 'path';
 import fs from 'fs-extra';
 import { VIDEO_CONFIG, UPLOAD_CONFIG } from '../src/utils/constants.js';
-import { logger, logVideoConversion } from '../src/utils/logger.js';
+import logger, { logVideoConversion } from '../src/utils/logger.js';
 import FileManager from './utils/file-manager.js';
 
 /**
@@ -10,11 +10,13 @@ import FileManager from './utils/file-manager.js';
  * Arquitetura modular para processamento otimizado com qualidade superior
  */
 export class VideoConverter {
-  constructor() {
+  constructor(io = null) {
     this.fileManager = new FileManager();
     this.config = VIDEO_CONFIG;
     this.processingQueue = new Map(); // Fila de processamento
+    this.activeJobs = new Map(); // Jobs ativos com detalhes completos
     this.maxConcurrentJobs = this.config.PROCESSING.MAX_CONCURRENT_JOBS;
+    this.io = io; // Socket.io para progresso em tempo real
     
     // Inicialização
     this.init();
@@ -27,6 +29,17 @@ export class VideoConverter {
       logger.info('🎬 VideoConverter inicializado com sucesso');
     } catch (error) {
       logger.error('❌ Erro na inicialização do VideoConverter:', error);
+    }
+  }
+
+  // Emitir progresso via Socket.io
+  emitProgress(fileId, data) {
+    if (this.io) {
+      this.io.emit('video-progress', {
+        fileId,
+        ...data,
+        timestamp: new Date().toISOString()
+      });
     }
   }
 
@@ -211,8 +224,10 @@ export class VideoConverter {
             `-map 0:a:${index}`,
             `-c:a:${index} ${codec}`,
             `-b:a:${index} ${bitrate}`,
-            `-metadata:s:a:${index} language=${audioTrack.language}`,
-            `-metadata:s:a:${index} title="${audioTrack.title}"`
+            `-metadata:s:a:${index}`,
+            `language=${audioTrack.language}`,
+            `-metadata:s:a:${index}`,
+            `title=${audioTrack.title.replace(/["\s]/g, '_')}`
           ]);
         });
       }
@@ -228,8 +243,10 @@ export class VideoConverter {
           command.outputOptions([
             `-map 0:s:${index}`,
             `-c:s:${index} ${outputCodec}`,
-            `-metadata:s:s:${index} language=${subtitle.language}`,
-            `-metadata:s:s:${index} title="${subtitle.title}"`
+            `-metadata:s:s:${index}`,
+            `language=${subtitle.language}`,
+            `-metadata:s:s:${index}`,
+            `title=${subtitle.title.replace(/["\s]/g, '_')}`
           ]);
 
           if (subtitle.forced) {
@@ -249,9 +266,12 @@ export class VideoConverter {
 
       // Metadados globais
       command.outputOptions([
-        `-metadata title="${metadata.globalMetadata.title || fileInfo.originalName}"`,
-        `-metadata encoder="Friend-Cine MKV Master v2.0"`,
-        `-metadata creation_time="${new Date().toISOString()}"`
+        `-metadata`,
+        `title=${metadata.globalMetadata.title || fileInfo.originalName}`,
+        `-metadata`,
+        `encoder=Friend-Cine_MKV_Master_v2.0`,
+        `-metadata`,
+        `creation_time=${new Date().toISOString()}`
       ]);
 
       command
@@ -263,6 +283,14 @@ export class VideoConverter {
           const percent = Math.round(progress.percent || 0);
           if (percent % 5 === 0) { // Log a cada 5%
             logger.info(`📊 Progresso MKV Master: ${percent}%`);
+            
+            // Emitir progresso detalhado da conversão MKV
+            this.emitProgress(fileInfo.fileId, {
+              status: 'converting_master',
+              step: `Convertendo MKV Master: ${percent}%`,
+              progress: 15 + (percent * 0.45), // 15% base + 45% da conversão
+              details: `H.265/HEVC ${quality} - ${percent}% concluído`
+            });
           }
         })
         .on('end', async () => {
@@ -714,32 +742,90 @@ export class VideoConverter {
     
     try {
       logger.info(`🎬 Iniciando processamento completo: ${uploadInfo.originalName}`);
+      
+      // Criar job completo com tracking detalhado
+      const jobData = {
+        jobId,
+        fileId: uploadInfo.fileId,
+        fileName: uploadInfo.originalName,
+        status: 'starting',
+        progress: 0,
+        step: 'Preparando processamento...',
+        startTime: Date.now(),
+        fileInfo: uploadInfo
+      };
+      
       this.processingQueue.set(jobId, { status: 'starting', fileInfo: uploadInfo });
+      this.activeJobs.set(uploadInfo.fileId, jobData);
+      
+      // Emitir progresso inicial
+      this.emitProgress(uploadInfo.fileId, {
+        status: 'starting',
+        step: 'Preparando processamento...',
+        progress: 0,
+        fileName: uploadInfo.originalName
+      });
 
       // 1. Mover para processamento
+      this.updateJobProgress(uploadInfo.fileId, {
+        status: 'preparing',
+        step: 'Movendo arquivo para processamento...',
+        progress: 5
+      });
       const processingInfo = await this.fileManager.moveToProcessing(uploadInfo);
       this.processingQueue.set(jobId, { status: 'extracting_metadata', fileInfo: processingInfo });
 
       // 2. Extrair metadados completos
+      this.updateJobProgress(uploadInfo.fileId, {
+        status: 'extracting_metadata',
+        step: 'Analisando metadados do vídeo...',
+        progress: 10
+      });
       const metadata = await this.extractMetadata(processingInfo.path);
       
       // 3. Converter para MKV Master (formato principal)
+      this.updateJobProgress(uploadInfo.fileId, {
+        status: 'converting_master',
+        step: 'Convertendo para MKV Master (H.265/HEVC)...',
+        progress: 15,
+        details: `Qualidade: ${this.determineBestQuality(metadata)}, Áudios: ${metadata.audio?.length || 0}, Legendas: ${metadata.subtitles?.length || 0}`
+      });
       this.processingQueue.set(jobId, { status: 'converting_master', fileInfo: processingInfo });
       const masterInfo = await this.convertToMKVMaster(processingInfo.path, processingInfo, metadata);
 
       // 4. Gerar versões web otimizadas
+      this.updateJobProgress(uploadInfo.fileId, {
+        status: 'generating_web_versions',
+        step: 'Gerando versões web otimizadas...',
+        progress: 60
+      });
       this.processingQueue.set(jobId, { status: 'generating_web_versions', fileInfo: masterInfo });
       const webVersions = await this.generateWebVersions(masterInfo, metadata);
 
       // 5. Gerar thumbnails
+      this.updateJobProgress(uploadInfo.fileId, {
+        status: 'generating_thumbnails',
+        step: 'Gerando thumbnails...',
+        progress: 80
+      });
       this.processingQueue.set(jobId, { status: 'generating_thumbnails', fileInfo: masterInfo });
       const thumbnails = await this.generateThumbnails(masterInfo, metadata);
 
       // 6. Extrair legendas
+      this.updateJobProgress(uploadInfo.fileId, {
+        status: 'extracting_subtitles',
+        step: 'Extraindo legendas...',
+        progress: 90
+      });
       this.processingQueue.set(jobId, { status: 'extracting_subtitles', fileInfo: masterInfo });
       const subtitles = await this.extractSubtitles(masterInfo, metadata);
 
       // 7. Limpeza final
+      this.updateJobProgress(uploadInfo.fileId, {
+        status: 'finalizing',
+        step: 'Finalizando processamento...',
+        progress: 95
+      });
       await this.fileManager.cleanupTemp(processingInfo.path);
 
       const result = {
@@ -755,6 +841,25 @@ export class VideoConverter {
         processingTime: Date.now() - uploadInfo.uploadedAt
       };
 
+      // Emitir conclusão
+      this.updateJobProgress(uploadInfo.fileId, {
+        status: 'completed',
+        step: 'Processamento concluído!',
+        progress: 100,
+        result: {
+          masterFile: masterInfo.fileName,
+          webVersions: Object.keys(webVersions).length,
+          thumbnails: Object.keys(thumbnails).length,
+          subtitles: subtitles.length,
+          processingTime: result.processingTime
+        }
+      });
+
+      // Manter job completado por 30 segundos para UI
+      setTimeout(() => {
+        this.activeJobs.delete(uploadInfo.fileId);
+      }, 30000);
+
       this.processingQueue.delete(jobId);
       logger.info(`✅ Processamento completo concluído: ${uploadInfo.originalName}`);
       
@@ -763,12 +868,25 @@ export class VideoConverter {
       this.processingQueue.set(jobId, { status: 'error', error: error.message });
       logger.error(`❌ Erro no processamento de ${uploadInfo.originalName}:`, error);
       
+      // Emitir erro
+      this.updateJobProgress(uploadInfo.fileId, {
+        status: 'error',
+        step: 'Erro no processamento',
+        progress: 0,
+        error: error.message
+      });
+      
       // Limpeza em caso de erro
       try {
         await this.fileManager.cleanupTemp(uploadInfo.path);
       } catch (cleanupError) {
         logger.error('❌ Erro na limpeza após falha:', cleanupError);
       }
+
+      // Manter job com erro por 60 segundos para debugging
+      setTimeout(() => {
+        this.activeJobs.delete(uploadInfo.fileId);
+      }, 60000);
 
       throw error;
     }
@@ -789,20 +907,31 @@ export class VideoConverter {
     }
   }
 
+  // Método auxiliar para atualizar progresso e estado interno
+  updateJobProgress(fileId, updateData) {
+    const job = this.activeJobs.get(fileId);
+    if (job) {
+      Object.assign(job, updateData);
+      this.activeJobs.set(fileId, job);
+    }
+    
+    this.emitProgress(fileId, updateData);
+  }
+
   /**
    * Obtém status da fila de processamento
    */
   getProcessingStatus() {
-    const jobs = Array.from(this.processingQueue.values());
-    return {
-      active: jobs.length,
-      maxConcurrent: this.maxConcurrentJobs,
-      jobs: jobs.map(job => ({
-        status: job.status,
-        fileName: job.fileInfo?.originalName,
-        fileId: job.fileInfo?.fileId
-      }))
-    };
+    const activeJobsArray = Array.from(this.activeJobs.values());
+    
+    return activeJobsArray.map(job => ({
+      fileId: job.fileId,
+      fileName: job.fileName,
+      status: job.status,
+      progress: job.progress || 0,
+      step: job.step || 'Iniciando...',
+      startTime: job.startTime
+    }));
   }
 }
 

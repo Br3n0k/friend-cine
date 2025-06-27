@@ -1,0 +1,490 @@
+---
+// Componente para mostrar fila de processamento persistente
+---
+
+<!-- Seção de Fila de Processamento -->
+<div id="processing-queue-section" class="glass-effect rounded-xl p-6 mb-6 hidden">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold text-white flex items-center">
+      <i class="fas fa-cogs mr-2 text-blue-400"></i>
+      Processamento de Vídeos
+    </h2>
+    <div id="queue-status" class="flex items-center space-x-2">
+      <span id="active-count" class="px-2 py-1 bg-blue-600 text-white text-xs rounded-full">0</span>
+      <span class="text-gray-400 text-sm">ativos</span>
+    </div>
+  </div>
+
+  <!-- Lista de arquivos em processamento -->
+  <div id="processing-list" class="space-y-3">
+    <!-- Jobs serão adicionados aqui dinamicamente -->
+  </div>
+
+  <!-- Botão para recarregar status -->
+  <div class="mt-4 text-center">
+    <button id="refresh-queue" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm">
+      <i class="fas fa-sync-alt mr-2"></i>
+      Atualizar Status
+    </button>
+  </div>
+</div>
+
+<style>
+  .processing-item {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    transition: all 0.3s ease;
+  }
+
+  .processing-item:hover {
+    background: rgba(59, 130, 246, 0.15);
+    transform: translateY(-1px);
+  }
+
+  .processing-completed {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+  }
+
+  .processing-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+  }
+
+  .status-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  @keyframes pulse-process {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .processing-active .status-icon {
+    animation: pulse-process 2s infinite;
+  }
+
+  .progress-mini {
+    height: 4px;
+    background: rgba(107, 114, 128, 0.3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-mini-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+</style>
+
+<script>
+  // @ts-nocheck
+  class ProcessingQueue {
+    constructor() {
+      this.section = document.getElementById('processing-queue-section');
+      this.processingList = document.getElementById('processing-list');
+      this.activeCount = document.getElementById('active-count');
+      this.refreshBtn = document.getElementById('refresh-queue');
+      this.socket = null;
+      this.currentJobs = new Map();
+      this.pollInterval = null;
+      this.isConnected = false;
+      
+      this.init();
+    }
+
+    init() {
+      // Conectar eventos
+      if (this.refreshBtn) {
+        this.refreshBtn.addEventListener('click', () => {
+          this.loadProcessingStatus();
+        });
+      }
+
+      // Carregar status inicial
+      this.loadProcessingStatus();
+      
+      // Iniciar polling para atualizar status
+      this.startPolling();
+      
+      // Conectar WebSocket se disponível
+      this.connectWebSocket();
+    }
+
+    async loadProcessingStatus() {
+      try {
+        const response = await fetch('http://localhost:4000/api/processing/status');
+        if (response.ok) {
+          const jobs = await response.json();
+          this.updateQueueDisplay({ active: jobs.length, jobs });
+        } else {
+          console.warn('Erro na resposta do servidor:', response.status);
+        }
+      } catch (error) {
+        console.warn('Erro ao carregar status de processamento:', error);
+        // Em caso de erro, manter jobs locais se existirem
+        if (this.currentJobs.size > 0) {
+          this.updateQueueDisplay({
+            active: this.currentJobs.size,
+            jobs: Array.from(this.currentJobs.values())
+          });
+        }
+      }
+    }
+
+    updateQueueDisplay(status) {
+      if (!this.processingList || !this.activeCount) return;
+
+      const { active, jobs } = status;
+      
+      // Atualizar contador
+      this.activeCount.textContent = active;
+      
+      // Mostrar/ocultar seção baseado em atividade
+      if (active > 0 || jobs.length > 0) {
+        if (this.section) this.section.classList.remove('hidden');
+      } else {
+        if (this.section) this.section.classList.add('hidden');
+        return;
+      }
+
+      // Atualizar lista de jobs
+      this.processingList.innerHTML = jobs.map(job => {
+        const existingJob = this.currentJobs.get(job.fileId);
+        const progress = existingJob?.progress || 0;
+        
+        return this.createJobElement(job, progress);
+      }).join('');
+
+      // Atualizar mapa de jobs atuais
+      jobs.forEach(job => {
+        if (!this.currentJobs.has(job.fileId)) {
+          this.currentJobs.set(job.fileId, {
+            ...job,
+            progress: 0,
+            step: 'Iniciando...'
+          });
+        }
+      });
+    }
+
+    createJobElement(job, progress = 0) {
+      const statusConfig = this.getStatusConfig(job.status);
+      
+      return `
+        <div id="job-${job.fileId}" class="processing-item ${statusConfig.class} rounded-lg p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center space-x-3">
+              <div class="status-icon ${statusConfig.iconClass}">
+                <i class="${statusConfig.icon}"></i>
+              </div>
+              <div>
+                <h3 class="text-white font-medium text-sm truncate max-w-xs">
+                  ${job.fileName || 'Arquivo desconhecido'}
+                </h3>
+                <p class="text-gray-400 text-xs">
+                  Status: ${statusConfig.label}
+                </p>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-blue-400 font-semibold text-sm">${Math.round(progress)}%</div>
+              <div class="text-xs text-gray-400">
+                ${this.getElapsedTime(job)}
+              </div>
+            </div>
+          </div>
+          
+          <!-- Barra de progresso mini -->
+          <div class="progress-mini">
+            <div class="progress-mini-fill" style="width: ${progress}%"></div>
+          </div>
+          
+          <!-- Step atual -->
+          <div class="mt-2">
+            <p id="job-step-${job.fileId}" class="text-xs text-gray-300">
+              ${this.currentJobs.get(job.fileId)?.step || 'Preparando...'}
+            </p>
+          </div>
+        </div>
+      `;
+    }
+
+    getStatusConfig(status) {
+      const configs = {
+        'starting': {
+          class: 'processing-active',
+          icon: 'fas fa-hourglass-start',
+          iconClass: 'text-blue-400',
+          label: 'Iniciando'
+        },
+        'extracting_metadata': {
+          class: 'processing-active',
+          icon: 'fas fa-search',
+          iconClass: 'text-blue-400',
+          label: 'Analisando'
+        },
+        'converting_master': {
+          class: 'processing-active',
+          icon: 'fas fa-cogs',
+          iconClass: 'text-blue-400',
+          label: 'Convertendo MKV'
+        },
+        'generating_web_versions': {
+          class: 'processing-active',
+          icon: 'fas fa-globe',
+          iconClass: 'text-blue-400',
+          label: 'Versões Web'
+        },
+        'generating_thumbnails': {
+          class: 'processing-active',
+          icon: 'fas fa-images',
+          iconClass: 'text-blue-400',
+          label: 'Thumbnails'
+        },
+        'extracting_subtitles': {
+          class: 'processing-active',
+          icon: 'fas fa-closed-captioning',
+          iconClass: 'text-blue-400',
+          label: 'Legendas'
+        },
+        'completed': {
+          class: 'processing-completed',
+          icon: 'fas fa-check-circle',
+          iconClass: 'text-green-400',
+          label: 'Concluído'
+        },
+        'error': {
+          class: 'processing-error',
+          icon: 'fas fa-exclamation-circle',
+          iconClass: 'text-red-400',
+          label: 'Erro'
+        }
+      };
+
+      return configs[status] || configs['starting'];
+    }
+
+    getElapsedTime(job) {
+      if (!job.startTime) return 'processando...';
+      
+      const elapsed = Date.now() - job.startTime;
+      const minutes = Math.floor(elapsed / 60000);
+      const seconds = Math.floor((elapsed % 60000) / 1000);
+      
+      if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+      } else {
+        return `${seconds}s`;
+      }
+    }
+
+    connectWebSocket() {
+      if (typeof io === 'undefined') {
+        console.warn('Socket.io não disponível, usando apenas polling');
+        return;
+      }
+      
+      try {
+        this.socket = io('http://localhost:4000', {
+          timeout: 5000,
+          reconnection: true,
+          reconnectionDelay: 2000,
+          reconnectionAttempts: 5
+        });
+        
+        this.socket.on('connect', () => {
+          console.log('🔗 WebSocket conectado para fila de processamento');
+          this.isConnected = true;
+        });
+        
+        this.socket.on('video-progress', (progressData) => {
+          this.updateJobProgress(progressData);
+        });
+        
+        this.socket.on('disconnect', () => {
+          console.log('❌ WebSocket desconectado da fila');
+          this.isConnected = false;
+        });
+        
+        this.socket.on('connect_error', (error) => {
+          console.warn('❌ Erro de conexão WebSocket:', error.message);
+          this.isConnected = false;
+        });
+      } catch (error) {
+        console.warn('Erro ao inicializar WebSocket:', error);
+      }
+    }
+
+    updateJobProgress(progressData) {
+      const { fileId, progress, step, status } = progressData;
+      
+      // Atualizar job no mapa local
+      if (this.currentJobs.has(fileId)) {
+        const job = this.currentJobs.get(fileId);
+        Object.assign(job, { progress, step, status });
+      } else {
+        // Criar job se não existir (recebido via WebSocket)
+        this.currentJobs.set(fileId, {
+          fileId,
+          fileName: progressData.fileName || 'Processando...',
+          status,
+          progress,
+          step,
+          startTime: Date.now()
+        });
+      }
+      
+      // Mostrar seção se não estiver visível
+      if (this.section && this.section.classList.contains('hidden')) {
+        this.section.classList.remove('hidden');
+      }
+      
+      // Atualizar contador
+      if (this.activeCount) {
+        this.activeCount.textContent = this.currentJobs.size;
+      }
+      
+      // Atualizar elemento visual específico
+      this.updateJobElement(fileId, progressData);
+      
+      // Se completou, remover após delay
+      if (status === 'completed') {
+        setTimeout(() => {
+          this.currentJobs.delete(fileId);
+          this.loadProcessingStatus();
+          
+          // Recarregar lista de vídeos para mostrar resultado
+          if (window.loadVideos) {
+            window.loadVideos();
+          }
+        }, 5000);
+      } else if (status === 'error') {
+        setTimeout(() => {
+          this.currentJobs.delete(fileId);
+          this.loadProcessingStatus();
+        }, 10000);
+      }
+    }
+
+    updateJobElement(fileId, progressData) {
+      const jobElement = document.getElementById(`job-${fileId}`);
+      if (!jobElement) {
+        // Recriar lista se elemento não existe
+        this.updateQueueDisplay({
+          active: this.currentJobs.size,
+          jobs: Array.from(this.currentJobs.values())
+        });
+        return;
+      }
+
+      const { progress, step, status } = progressData;
+      
+      // Atualizar barra de progresso
+      const progressBar = jobElement.querySelector('.progress-mini-fill');
+      if (progressBar) {
+        progressBar.style.width = `${Math.round(progress)}%`;
+      }
+      
+      // Atualizar percentual
+      const percentEl = jobElement.querySelector('.text-blue-400, .text-green-400, .text-red-400');
+      if (percentEl) {
+        percentEl.textContent = `${Math.round(progress)}%`;
+      }
+      
+      // Atualizar step
+      const stepEl = document.getElementById(`job-step-${fileId}`);
+      if (stepEl) {
+        stepEl.textContent = step;
+      }
+      
+      // Atualizar classe e ícone baseado no status
+      const statusConfig = this.getStatusConfig(status);
+      jobElement.className = `processing-item ${statusConfig.class} rounded-lg p-4`;
+      
+      const icon = jobElement.querySelector('.status-icon i');
+      if (icon) {
+        icon.className = statusConfig.icon;
+      }
+    }
+
+    startPolling() {
+      // Polling principal a cada 5 segundos para sincronizar status
+      this.pollInterval = setInterval(() => {
+        this.loadProcessingStatus();
+      }, 5000);
+      
+      // Polling secundário a cada segundo para atualizar tempos
+      this.timeUpdateInterval = setInterval(() => {
+        this.updateElapsedTimes();
+      }, 1000);
+    }
+
+    updateElapsedTimes() {
+      // Atualizar tempos decorridos na UI
+      this.currentJobs.forEach((job, fileId) => {
+        const jobElement = document.getElementById(`job-${fileId}`);
+        if (jobElement) {
+          const timeEl = jobElement.querySelector('.text-xs.text-gray-400');
+          if (timeEl) {
+            timeEl.textContent = this.getElapsedTime(job);
+          }
+        }
+      });
+    }
+
+    stopPolling() {
+      if (this.pollInterval) {
+        clearInterval(this.pollInterval);
+        this.pollInterval = null;
+      }
+      if (this.timeUpdateInterval) {
+        clearInterval(this.timeUpdateInterval);
+        this.timeUpdateInterval = null;
+      }
+    }
+
+    // Método para mostrar um job específico (chamado do upload)
+    showProcessingJob(fileId, fileName) {
+      // Adicionar job temporário até polling pegar
+      this.currentJobs.set(fileId, {
+        fileId,
+        fileName,
+        status: 'starting',
+        progress: 0,
+        step: 'Iniciando processamento...'
+      });
+      
+      // Forçar atualização da UI
+      this.loadProcessingStatus();
+      
+      // Mostrar seção
+      if (this.section) {
+        this.section.classList.remove('hidden');
+      }
+    }
+
+    destroy() {
+      this.stopPolling();
+      if (this.socket) {
+        this.socket.disconnect();
+      }
+    }
+  }
+
+  // Instância global
+  window.processingQueue = new ProcessingQueue();
+
+  // Cleanup ao sair da página
+  window.addEventListener('beforeunload', () => {
+    if (window.processingQueue) {
+      window.processingQueue.destroy();
+    }
+  });
+</script> 

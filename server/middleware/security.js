@@ -75,14 +75,50 @@ export function sanitizeInput(req, res, next) {
     return obj;
   };
 
+  // Sanitizar body (pode ser modificado)
   if (req.body) {
     req.body = sanitize(req.body);
   }
-  if (req.query) {
-    req.query = sanitize(req.query);
+  
+  // Para query e params, criar propriedades sanitizadas sem modificar as originais
+  if (req.query && Object.keys(req.query).length > 0) {
+    const sanitizedQuery = sanitize(req.query);
+    // Definir uma nova propriedade para a query sanitizada
+    Object.defineProperty(req, 'sanitizedQuery', {
+      value: sanitizedQuery,
+      writable: false,
+      enumerable: false
+    });
+    
+    // Substituir os valores originais um por um (mais seguro)
+    for (const [key, value] of Object.entries(sanitizedQuery)) {
+      if (req.query.hasOwnProperty(key)) {
+        try {
+          req.query[key] = value;
+        } catch (error) {
+          // Se não conseguir modificar, ignora silenciosamente
+          console.debug(`Não foi possível sanitizar query.${key}`);
+        }
+      }
+    }
   }
-  if (req.params) {
-    req.params = sanitize(req.params);
+  
+  // Para params, tentar sanitizar com segurança
+  if (req.params && Object.keys(req.params).length > 0) {
+    try {
+      const sanitizedParams = sanitize(req.params);
+      for (const [key, value] of Object.entries(sanitizedParams)) {
+        if (req.params.hasOwnProperty(key)) {
+          try {
+            req.params[key] = value;
+          } catch (error) {
+            console.debug(`Não foi possível sanitizar params.${key}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.debug('Erro ao sanitizar params:', error.message);
+    }
   }
 
   next();

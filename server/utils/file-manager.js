@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import crypto from 'crypto';
 import { UPLOAD_CONFIG, VIDEO_CONFIG } from '../../src/utils/constants.js';
-import { logger, logFileOperation } from '../../src/utils/logger.js';
+import logger, { logFileOperation } from '../../src/utils/logger.js';
 
 /**
  * Gerenciador principal de arquivos do sistema

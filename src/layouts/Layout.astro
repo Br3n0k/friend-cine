@@ -10,7 +10,7 @@ const { title } = Astro.props;
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="description" content="Friend Cine - Assista filmes em conjunto com seus amigos" />
+    <meta name="description" content="Friend Cine MKV 2.0 - Cinema em qualidade master com H.265/HEVC e FLAC. Assista filmes em conjunto com qualidade superior." />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
@@ -131,10 +131,20 @@ const { title } = Astro.props;
       <div class="container mx-auto flex items-center justify-between">
         <div class="flex items-center space-x-3">
           <i class="fas fa-film text-3xl text-purple-400"></i>
-          <h1 class="text-2xl font-bold text-white">Friend Cine</h1>
+          <div>
+            <h1 class="text-2xl font-bold text-white flex items-center">
+              Friend Cine
+              <span class="ml-3 px-2 py-1 bg-gradient-to-r from-blue-600 to-purple-600 text-xs rounded-full font-medium">
+                MKV 2.0
+              </span>
+            </h1>
+            <div class="text-xs text-gray-400 mt-1">
+              H.265/HEVC • FLAC • Qualidade Master
+            </div>
+          </div>
         </div>
         <div class="text-sm text-gray-300">
-          Assista filmes em conjunto com seus amigos
+          Cinema em qualidade master com seus amigos
         </div>
       </div>
     </nav>

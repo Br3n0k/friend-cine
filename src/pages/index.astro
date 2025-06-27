@@ -1,22 +1,39 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import ProcessingQueue from '../components/ProcessingQueue.astro';
 ---
 
-<Layout title="Friend Cine - Página Inicial">
+<Layout title="Friend Cine MKV 2.0 - Cinema em Qualidade Master">
+  <!-- Fila de Processamento Persistente -->
+  <ProcessingQueue />
+  
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Seção de Upload -->
     <div class="lg:col-span-1">
       <div class="glass-effect rounded-xl p-6">
         <h2 class="text-xl font-bold text-white mb-4 flex items-center">
           <i class="fas fa-upload mr-2 text-blue-400"></i>
-          Upload de Vídeo
+          Upload de Vídeo MKV Master
         </h2>
+        
+        <!-- Info MKV -->
+        <div class="bg-gradient-to-r from-blue-600/10 to-purple-600/10 rounded-lg p-4 mb-4 border border-blue-500/20">
+          <div class="flex items-center mb-2">
+            <i class="fas fa-star text-yellow-400 mr-2"></i>
+            <span class="text-sm font-medium text-white">MKV Master Quality</span>
+          </div>
+          <div class="text-xs text-gray-300 space-y-1">
+            <div>• <strong>Codec:</strong> H.265/HEVC + FLAC</div>
+            <div>• <strong>Qualidades:</strong> 4K, 1080p, 720p, 480p</div>
+            <div>• <strong>Auto-conversão:</strong> Versões Web (MP4/WebM)</div>
+          </div>
+        </div>
         
         <div id="upload-area" class="border-2 border-dashed border-gray-400 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors">
           <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-4"></i>
           <p class="text-gray-300 mb-2">Clique para selecionar ou arraste um vídeo</p>
-          <p class="text-sm text-gray-500">MP4, WebM, AVI, MOV (Máx: 2GB)</p>
-          <input type="file" id="video-upload" accept="video/*" class="hidden">
+          <p class="text-sm text-gray-500">MP4, WebM, AVI, MOV, <strong class="text-blue-400">MKV</strong> (Máx: 5GB)</p>
+          <input type="file" id="video-upload" accept="video/*,.mkv" class="hidden">
         </div>
         
         <div id="upload-progress" class="hidden mt-4">
@@ -31,10 +48,23 @@ import Layout from '../layouts/Layout.astro';
     <!-- Lista de Vídeos -->
     <div class="lg:col-span-2">
       <div class="glass-effect rounded-xl p-6">
-        <h2 class="text-xl font-bold text-white mb-4 flex items-center">
-          <i class="fas fa-video mr-2 text-green-400"></i>
-          Biblioteca de Vídeos
-        </h2>
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-bold text-white flex items-center">
+            <i class="fas fa-video mr-2 text-green-400"></i>
+            Biblioteca de Vídeos
+          </h2>
+          
+          <!-- Badge MKV Master -->
+          <div class="flex items-center space-x-2">
+            <span class="px-3 py-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs rounded-full font-medium">
+              <i class="fas fa-crown mr-1"></i>
+              MKV Master
+            </span>
+            <span class="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded-full">
+              H.265/HEVC
+            </span>
+          </div>
+        </div>
         
         <div id="videos-list" class="space-y-3">
           <!-- Videos will be loaded here -->
@@ -48,7 +78,7 @@ import Layout from '../layouts/Layout.astro';
         <div id="no-videos" class="text-center py-8 hidden">
           <i class="fas fa-film text-4xl text-gray-400 mb-4"></i>
           <p class="text-gray-300">Nenhum vídeo encontrado</p>
-          <p class="text-sm text-gray-500">Faça upload de um vídeo para começar</p>
+          <p class="text-sm text-gray-500">Faça upload de um vídeo MKV para começar com qualidade master</p>
         </div>
       </div>
     </div>
@@ -70,6 +100,57 @@ import Layout from '../layouts/Layout.astro';
         <i class="fas fa-door-open text-4xl text-gray-400 mb-4"></i>
         <p class="text-gray-300">Nenhuma sala ativa</p>
         <p class="text-sm text-gray-500">Crie uma sala selecionando um vídeo</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Informações Técnicas MKV -->
+  <div class="mt-6">
+    <div class="glass-effect rounded-xl p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-md font-bold text-white flex items-center">
+          <i class="fas fa-info-circle mr-2 text-blue-400"></i>
+          Friend Cine MKV 2.0.0 - Especificações Técnicas
+        </h3>
+        <span class="text-xs text-gray-400">Pipeline de Qualidade Master</span>
+      </div>
+      
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+        <!-- Codec de Vídeo -->
+        <div class="bg-blue-600/10 rounded-lg p-3 border border-blue-500/20">
+          <div class="text-blue-400 font-medium mb-1">
+            <i class="fas fa-video mr-1"></i>Vídeo
+          </div>
+          <div class="text-gray-300">H.265/HEVC</div>
+          <div class="text-gray-400">4K • 1080p • 720p • 480p</div>
+        </div>
+
+        <!-- Codec de Áudio -->
+        <div class="bg-purple-600/10 rounded-lg p-3 border border-purple-500/20">
+          <div class="text-purple-400 font-medium mb-1">
+            <i class="fas fa-volume-up mr-1"></i>Áudio
+          </div>
+          <div class="text-gray-300">FLAC Lossless</div>
+          <div class="text-gray-400">AAC • Opus • MP3</div>
+        </div>
+
+        <!-- Auto-Conversão -->
+        <div class="bg-green-600/10 rounded-lg p-3 border border-green-500/20">
+          <div class="text-green-400 font-medium mb-1">
+            <i class="fas fa-sync-alt mr-1"></i>Auto-Conversão
+          </div>
+          <div class="text-gray-300">MP4 • WebM</div>
+          <div class="text-gray-400">Thumbnails • Legendas</div>
+        </div>
+
+        <!-- Limite -->
+        <div class="bg-yellow-600/10 rounded-lg p-3 border border-yellow-500/20">
+          <div class="text-yellow-400 font-medium mb-1">
+            <i class="fas fa-hdd mr-1"></i>Capacidade
+          </div>
+          <div class="text-gray-300">Até 5GB</div>
+          <div class="text-gray-400">FFmpeg • Socket.io</div>
+        </div>
       </div>
     </div>
   </div>
@@ -105,6 +186,7 @@ import Layout from '../layouts/Layout.astro';
   <script>
     // @ts-nocheck
     let selectedVideoFile = null;
+    let socket = null;
 
     // Upload de arquivo
     const uploadArea = document.getElementById('upload-area');
@@ -156,9 +238,19 @@ import Layout from '../layouts/Layout.astro';
           uploadStatus.textContent = 'Upload concluído!';
           progressBar.style.width = '100%';
           
+          // Iniciar monitoramento se há processamento
+          if (result.isProcessing) {
+            const fileId = result.filename.split('_')[0]; // Extrair fileId do nome
+            
+            // Mostrar na fila de processamento
+            window.processingQueue?.showProcessingJob(fileId, result.originalName);
+            
+            initializeSocket(); // Conectar WebSocket para progresso
+          }
+          
           setTimeout(() => {
             uploadProgress.classList.add('hidden');
-            loadVideos();
+            window.loadVideos();
           }, 1000);
         } else {
           throw new Error('Erro no upload');
@@ -168,8 +260,35 @@ import Layout from '../layouts/Layout.astro';
       }
     }
 
-    // Carregar vídeos
-    async function loadVideos() {
+    // Inicializar WebSocket para progresso
+    function initializeSocket() {
+      if (socket) return; // Já conectado
+      
+      socket = io('http://localhost:4000');
+      
+      socket.on('connect', () => {
+        console.log('✅ WebSocket conectado para monitoramento de progresso');
+      });
+      
+      socket.on('video-progress', (progressData) => {
+        console.log('📊 Progresso recebido:', progressData);
+        
+        // Atualizar fila de processamento
+        window.processingQueue?.updateJobProgress(progressData);
+      });
+      
+      socket.on('disconnect', () => {
+        console.log('❌ WebSocket desconectado');
+        socket = null;
+      });
+      
+      socket.on('connect_error', (error) => {
+        console.error('❌ Erro de conexão WebSocket:', error);
+      });
+    }
+
+    // Carregar vídeos (função global)
+    window.loadVideos = async function loadVideos() {
       const videosLoading = document.getElementById('videos-loading');
       const videosList = document.getElementById('videos-list');
       const noVideos = document.getElementById('no-videos');
@@ -377,7 +496,7 @@ import Layout from '../layouts/Layout.astro';
           console.log('✅ Conversão concluída:', result);
           
           // Recarregar lista de vídeos
-          await loadVideos();
+          await window.loadVideos();
           
           // Mostrar notificação de sucesso
           window.showNotification('Conversão concluída!', 'success');
@@ -418,7 +537,7 @@ import Layout from '../layouts/Layout.astro';
           console.log('✅ Vídeo deletado:', result);
           
           // Recarregar lista de vídeos
-          await loadVideos();
+          await window.loadVideos();
           await loadRooms(); // Recarregar salas também
           
           // Mostrar notificação de sucesso
@@ -471,7 +590,7 @@ import Layout from '../layouts/Layout.astro';
     }
 
     // Carregar dados iniciais
-    loadVideos();
+    window.loadVideos();
     loadRooms();
     
     // Atualizar salas a cada 10 segundos (reduzido para evitar spam)

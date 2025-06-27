@@ -36,7 +36,7 @@ import logger, {
 import { UPLOAD_CONFIG, VIDEO_CONFIG } from '../src/utils/constants.js';
 import { validateVideoFile, validateRoomId, validateUsername } from '../src/utils/validation.js';
 import FileManager from './utils/file-manager.js';
-import { securityMiddleware } from './middleware/security.js';
+
 
 // Carregar variáveis de ambiente
 dotenv.config();
@@ -69,7 +69,7 @@ const cinemaRooms = new Map();
 
 // Inicializar conversor de vídeo
 const videosDir = path.join(__dirname, '../public/videos');
-const videoConverter = new VideoConverter(videosDir);
+const videoConverter = new VideoConverter(io);
 
 // Configuração do multer para upload de vídeos
 // Configuração melhorada do multer
@@ -228,6 +228,19 @@ app.get('/api/health', (req, res) => {
   res.json(healthInfo);
 });
 
+// Rota para status da fila de processamento
+app.get('/api/processing/status', (req, res) => {
+  try {
+    const activeJobs = videoConverter.getProcessingStatus();
+    
+    // Retornar diretamente o array de jobs (compatível com frontend)
+    res.json(activeJobs);
+  } catch (error) {
+    console.error('❌ Erro ao obter status de processamento:', error);
+    res.status(500).json([]);
+  }
+});
+
 // Rotas da API
 app.get('/api/videos', async (req, res) => {
   try {
@@ -328,13 +341,22 @@ app.post('/api/upload', upload.single('video'), async (req, res) => {
     try {
       console.log(`🔄 Iniciando processamento automático: ${req.file.originalname}`);
       
-      const processedFiles = await videoConverter.processUploadedFile(
-        req.file.path, 
-        req.file.originalname
-      );
+      // Preparar informações do upload para o processamento
+      const uploadInfo = {
+        fileId: path.parse(req.file.filename).name, // ID único baseado no nome do arquivo
+        fileName: req.file.filename, // Nome do arquivo no servidor
+        originalName: req.file.originalname,
+        path: req.file.path,
+        uploadedAt: Date.now(),
+        size: req.file.size
+      };
+
+      const processedResult = await videoConverter.processVideo(uploadInfo);
 
       console.log(`✅ Processamento concluído para: ${req.file.originalname}`);
-      console.log('📁 Arquivos gerados:', processedFiles.map(f => f.format).join(', '));
+      console.log('📁 Arquivo master:', processedResult.master.fileName);
+      console.log('🌐 Versões web:', Object.keys(processedResult.webVersions).join(', '));
+      console.log('📸 Thumbnails:', Object.keys(processedResult.thumbnails).join(', '));
 
       // Aqui poderíamos notificar via WebSocket se necessário
       // io.emit('video-processed', { filename: req.file.filename, processedFiles });
@@ -362,12 +384,22 @@ app.post('/api/convert/:filename', async (req, res) => {
 
     console.log(`🔄 Solicitação de conversão para: ${filename}`);
     
-    const processedFiles = await videoConverter.processUploadedFile(filePath, filename);
+    // Preparar informações para reprocessamento
+    const uploadInfo = {
+      fileId: path.parse(filename).name,
+      fileName: filename, // Nome do arquivo
+      originalName: filename,
+      path: filePath,
+      uploadedAt: Date.now(),
+      size: (await fs.stat(filePath)).size
+    };
+
+    const processedResult = await videoConverter.processVideo(uploadInfo);
     
     res.json({
       success: true,
       originalFile: filename,
-      processedFiles: processedFiles,
+      processedResult: processedResult,
       message: 'Conversão concluída'
     });
     
@@ -466,6 +498,17 @@ app.delete('/api/videos/:filename', async (req, res) => {
   } catch (error) {
     console.error('❌ Erro ao deletar vídeo:', error);
     res.status(500).json({ error: 'Erro ao deletar arquivo' });
+  }
+});
+
+// Rota para obter status de processamento
+app.get('/api/processing/status', (req, res) => {
+  try {
+    const status = videoConverter.getProcessingStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Erro ao obter status de processamento:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 

@@ -22,13 +22,25 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// Verificar se precisa de conversão
+// Verificar se precisa de conversão para web
 function needsConversion(filename: string): boolean {
-  return /\.(mkv|avi|mov|wmv|flv)$/i.test(filename);
+  return /\.(avi|mov|wmv|flv)$/i.test(filename);
+}
+
+// Verificar se é MKV Master
+function isMKVMaster(filename: string): boolean {
+  return /\.mkv$/i.test(filename) && filename.includes('_master');
+}
+
+// Verificar se é MKV original que pode ser otimizado
+function isMKVOriginal(filename: string): boolean {
+  return /\.mkv$/i.test(filename) && !filename.includes('_master');
 }
 
 const formattedSize = formatFileSize(video.size);
 const needsConv = needsConversion(video.name);
+const isMaster = isMKVMaster(video.name);
+const isMKVOrig = isMKVOriginal(video.name);
 const isConverted = video.type === 'converted';
 const isOriginal = video.type === 'original';
 ---
@@ -41,9 +53,19 @@ const isOriginal = video.type === 'original';
       </h3>
       <div class="flex items-center space-x-2 text-sm text-gray-400">
         <span>{formattedSize}</span>
+        {isMaster && (
+          <span class="px-2 py-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs rounded font-medium">
+            <i class="fas fa-crown mr-1"></i>MKV Master
+          </span>
+        )}
+        {isMKVOrig && (
+          <span class="px-2 py-1 bg-blue-700 text-white text-xs rounded">
+            <i class="fas fa-film mr-1"></i>MKV Original
+          </span>
+        )}
         {isConverted && (
           <span class="px-2 py-1 bg-green-600 text-white text-xs rounded">
-            Convertido
+            <i class="fas fa-globe mr-1"></i>Web
           </span>
         )}
         {needsConv && isOriginal && (
@@ -52,8 +74,8 @@ const isOriginal = video.type === 'original';
           </span>
         )}
         {video.isOptimized && (
-          <span class="px-2 py-1 bg-blue-600 text-white text-xs rounded">
-            Otimizado
+          <span class="px-2 py-1 bg-emerald-600 text-white text-xs rounded">
+            <i class="fas fa-rocket mr-1"></i>Otimizado
           </span>
         )}
       </div>
@@ -76,7 +98,17 @@ const isOriginal = video.type === 'original';
         data-action="convert"
         data-video-file={video.id}
       >
-        <i class="fas fa-cog mr-2"></i>Converter
+        <i class="fas fa-cog mr-2"></i>Converter para Web
+      </button>
+    )}
+    
+    {isMKVOrig && (
+      <button 
+        class="mkv-convert-btn flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+        data-action="convert"
+        data-video-file={video.id}
+      >
+        <i class="fas fa-crown mr-2"></i>Processar MKV
       </button>
     )}
     
@@ -109,13 +141,20 @@ const isOriginal = video.type === 'original';
   }
 
   .convert-btn,
-  .create-btn {
+  .create-btn,
+  .mkv-convert-btn {
     transition: all 0.2s ease;
   }
 
   .video-card:hover .convert-btn,
-  .video-card:hover .create-btn {
+  .video-card:hover .create-btn,
+  .video-card:hover .mkv-convert-btn {
     animation: pulseGlow 0.5s ease-out;
+  }
+
+  .mkv-convert-btn:hover {
+    background: linear-gradient(45deg, #2563eb, #7c3aed);
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
   }
 
   @keyframes pulseGlow {
