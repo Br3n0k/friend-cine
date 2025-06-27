@@ -1,3 +1,5 @@
+![Preview](preview.png)
+
 # 🎬 Friend Cine
 
 Uma plataforma colaborativa moderna para assistir filmes em conjunto online, construída com **Astro**, **Express.js** e **Socket.io**.
